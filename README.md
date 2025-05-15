@@ -15,45 +15,50 @@ The container requires the following environment variables:
 - `OVERSEERR_URL`: The URL of your Overseerr instance (e.g., `http://overseerr:5055`)
 - `OVERSEERR_API_KEY`: Your Overseerr API key
 
-## Building and Running
+## Quick Start with Docker Compose
 
-1. Build the Docker image:
-```bash
-docker build -t netflix-overseerr-bridge .
-```
-
-2. Run the container:
-```bash
-docker run -d \
-  -e OVERSEERR_URL="http://your-overseerr-url:5055" \
-  -e OVERSEERR_API_KEY="your-api-key" \
-  --name netflix-overseerr-bridge \
-  netflix-overseerr-bridge
-```
-
-## Running with Docker Compose
-
-Create a `docker-compose.yml` file:
+1. Create a `docker-compose.yml` file:
 
 ```yaml
 version: '3'
 services:
   netflix-overseerr-bridge:
-    build: .
+    container_name: netflix-overseerr-bridge
+    image: stephtanner/netflix-overseerr-bridge:latest
     environment:
-      - OVERSEERR_URL=http://your-overseerr-url:5055
-      - OVERSEERR_API_KEY=your-api-key
+      - OVERSEERR_URL=${OVERSEERR_URL}
+      - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
     restart: unless-stopped
 ```
 
-Then run:
+2. Create a `.env` file in the same directory:
+```bash
+OVERSEERR_URL=http://your-overseerr-url:5055
+OVERSEERR_API_KEY=your-api-key
+```
+
+3. Run the container:
 ```bash
 docker-compose up -d
 ```
 
+## Manual Docker Run
+
+Alternatively, you can run the container directly with Docker:
+
+```bash
+docker run -d \
+  -e OVERSEERR_URL="http://your-overseerr-url:5055" \
+  -e OVERSEERR_API_KEY="your-api-key" \
+  --name netflix-overseerr-bridge \
+  stephtanner/netflix-overseerr-bridge:latest
+```
+
 ## Scheduling
 
-To run this container on a schedule (e.g., weekly), you can use Docker's restart policy or set up a cron job:
+The container is configured to restart automatically unless explicitly stopped (`restart: unless-stopped`). This ensures the container will run after system reboots.
+
+To run this container on a specific schedule (e.g., weekly), you can use a cron job:
 
 ```bash
 # Example cron job to run weekly
@@ -65,4 +70,5 @@ To run this container on a schedule (e.g., weekly), you can use Docker's restart
 - The container will fetch Netflix's top 10 content and attempt to request each item in Overseerr
 - If a title is not found in Overseerr, it will be logged and skipped
 - The script includes a 1-second delay between requests to be respectful to the Overseerr API
-- All actions are logged for monitoring and debugging 
+- All actions are logged for monitoring and debugging
+- The container uses Python 3.11 and runs the scraper script automatically on startup 
