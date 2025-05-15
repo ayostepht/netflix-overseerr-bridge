@@ -81,26 +81,6 @@ Common frequency values:
 - 720: Monthly (30 days)
 - 8760: Yearly
 
-## Image Versions
-
-The Docker image is automatically built and published using GitHub Actions. The following tags are available:
-
-- `latest`: The most recent stable version
-- `v1.0.0`, `v1.1.0`, etc.: Specific version releases
-- `sha-abc123`: Git commit SHA for specific builds
-
-To use a specific version, replace `latest` with the desired tag in your `docker-compose.yml` or `docker run` command.
-
-## Scheduling
-
-The container is configured to restart automatically unless explicitly stopped (`restart: unless-stopped`). This ensures the container will run after system reboots.
-
-To run this container on a specific schedule (e.g., weekly), you can use a cron job:
-
-```bash
-# Example cron job to run weekly
-0 0 * * 0 docker restart netflix-overseerr-bridge
-```
 
 ## Notes
 
