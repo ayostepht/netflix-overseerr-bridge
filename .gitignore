@@ -15,4 +15,7 @@ ENV/
 .idea/
 
 # Logs
-*.log 
+*.log
+
+# Local scripts
+run.sh 

@@ -136,8 +136,15 @@ class NetflixOverseerrBridge:
                     logger.warning(f"No results found for {title} in TMDB")
                     return False
                 
-                # Get the first result
-                media_item = search_results['results'][0]
+                # Get all results and sort by release date
+                results = search_results['results']
+                if len(results) > 1:
+                    # Sort by release date (most recent first)
+                    results.sort(key=lambda x: x.get('releaseDate', '') or x.get('firstAirDate', ''), reverse=True)
+                    logger.info(f"Found {len(results)} matches for {title}, using most recent release from {results[0].get('releaseDate', '') or results[0].get('firstAirDate', '')}")
+                
+                # Get the first (most recent) result
+                media_item = results[0]
                 media_id = media_item['id']
                 
                 # For TV shows, we need to get the first season
