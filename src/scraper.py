@@ -7,6 +7,7 @@ from urllib.parse import quote
 import csv
 import io
 import sys
+import argparse
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -206,7 +207,7 @@ class NetflixOverseerrBridge:
             logger.error(f"Error requesting {title} in Overseerr: {str(e)}")
             return False
 
-    def run(self):
+    def run(self, run_frequency_hours=None):
         while True:
             logger.info("Starting Netflix Top 10 to Overseerr bridge")
             
@@ -229,17 +230,26 @@ class NetflixOverseerrBridge:
                     self.request_in_overseerr(title, 'tv')
                     time.sleep(1)  # Be nice to the API
 
-            # Calculate time until next run (tomorrow at 2 AM)
-            now = datetime.now()
-            next_run = now.replace(hour=2, minute=0, second=0, microsecond=0)
-            if next_run <= now:
-                next_run += timedelta(days=1)
+            if run_frequency_hours is not None:
+                # Use the specified run frequency
+                sleep_seconds = run_frequency_hours * 3600
+                next_run = datetime.now() + timedelta(seconds=sleep_seconds)
+            else:
+                # Calculate time until next run (tomorrow at 2 AM)
+                now = datetime.now()
+                next_run = now.replace(hour=2, minute=0, second=0, microsecond=0)
+                if next_run <= now:
+                    next_run += timedelta(days=1)
+                sleep_seconds = (next_run - now).total_seconds()
             
-            sleep_seconds = (next_run - now).total_seconds()
             logger.info(f"Next run scheduled for {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
             logger.info(f"Sleeping for {sleep_seconds/3600:.1f} hours")
             time.sleep(sleep_seconds)
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Netflix Top 10 to Overseerr Bridge')
+    parser.add_argument('--frequency', type=float, help='Run frequency in hours (e.g., 24 for daily, 168 for weekly)')
+    args = parser.parse_args()
+    
     bridge = NetflixOverseerrBridge()
-    bridge.run() 
+    bridge.run(args.frequency) 

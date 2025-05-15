@@ -54,6 +54,32 @@ docker run -d \
   stephtanner1/netflix-overseerr-bridge:latest
 ```
 
+## Run Frequency
+
+By default, the container runs once per day at 2 AM. You can customize the run frequency using the `--frequency` argument:
+
+```bash
+# Run every 12 hours
+docker run -d \
+  -e OVERSEERR_URL="http://your-overseerr-url:5055" \
+  -e OVERSEERR_API_KEY="your-api-key" \
+  --name netflix-overseerr-bridge \
+  stephtanner1/netflix-overseerr-bridge:latest --frequency 12
+
+# Run weekly (168 hours)
+docker run -d \
+  -e OVERSEERR_URL="http://your-overseerr-url:5055" \
+  -e OVERSEERR_API_KEY="your-api-key" \
+  --name netflix-overseerr-bridge \
+  stephtanner1/netflix-overseerr-bridge:latest --frequency 168
+```
+
+Common frequency values:
+- 24: Daily
+- 168: Weekly
+- 720: Monthly (30 days)
+- 8760: Yearly
+
 ## Image Versions
 
 The Docker image is automatically built and published using GitHub Actions. The following tags are available:
