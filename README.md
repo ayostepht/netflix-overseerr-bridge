@@ -28,6 +28,7 @@ services:
     environment:
       - OVERSEERR_URL=${OVERSEERR_URL}
       - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
+    command: --frequency 24  # Optional: Set run frequency in hours (e.g., 24 for daily)
     restart: unless-stopped
 ```
 
@@ -107,4 +108,4 @@ To run this container on a specific schedule (e.g., weekly), you can use a cron 
 - If a title is not found in Overseerr, it will be logged and skipped
 - The script includes a 1-second delay between requests to be respectful to the Overseerr API
 - All actions are logged for monitoring and debugging
-- The container uses Python 3.11 and runs the scraper script automatically on startup 
+- The container uses Python 3.11 and runs the scraper script automatically on startup
