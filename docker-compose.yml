@@ -1,4 +1,3 @@
-version: '3'
 services:
   netflix-overseerr-bridge:
     container_name: netflix-overseerr-bridge
@@ -6,4 +5,5 @@ services:
     environment:
       - OVERSEERR_URL=${OVERSEERR_URL}
       - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
+      - RUN_FREQUENCY=24  # Default to 24 hours if not set
     restart: unless-stopped 

@@ -14,13 +14,13 @@ The container requires the following environment variables:
 
 - `OVERSEERR_URL`: The URL of your Overseerr instance (e.g., `http://overseerr:5055`)
 - `OVERSEERR_API_KEY`: Your Overseerr API key
+- `RUN_FREQUENCY`: (Optional) Run frequency in hours (e.g., 24 for daily, 168 for weekly)
 
 ## Quick Start with Docker Compose
 
 1. Create a `docker-compose.yml` file:
 
 ```yaml
-version: '3'
 services:
   netflix-overseerr-bridge:
     container_name: netflix-overseerr-bridge
@@ -28,7 +28,7 @@ services:
     environment:
       - OVERSEERR_URL=${OVERSEERR_URL}
       - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
-    command: --frequency 24  # Optional: Set run frequency in hours (e.g., 24 for daily)
+      - RUN_FREQUENCY=24  # Optional: Set run frequency in hours (e.g., 24 for daily)
     restart: unless-stopped
 ```
 
@@ -36,6 +36,7 @@ services:
 ```bash
 OVERSEERR_URL=http://your-overseerr-url:5055
 OVERSEERR_API_KEY=your-api-key
+RUN_FREQUENCY=24  # Optional: Set run frequency in hours
 ```
 
 3. Run the container:
@@ -51,28 +52,31 @@ Alternatively, you can run the container directly with Docker:
 docker run -d \
   -e OVERSEERR_URL="http://your-overseerr-url:5055" \
   -e OVERSEERR_API_KEY="your-api-key" \
+  -e RUN_FREQUENCY=24 \
   --name netflix-overseerr-bridge \
   stephtanner1/netflix-overseerr-bridge:latest
 ```
 
 ## Run Frequency
 
-By default, the container runs once per day at 2 AM. You can customize the run frequency using the `--frequency` argument:
+By default, the container runs once per day at 2 AM. You can customize the run frequency using the `RUN_FREQUENCY` environment variable:
 
 ```bash
 # Run every 12 hours
 docker run -d \
   -e OVERSEERR_URL="http://your-overseerr-url:5055" \
   -e OVERSEERR_API_KEY="your-api-key" \
+  -e RUN_FREQUENCY=12 \
   --name netflix-overseerr-bridge \
-  stephtanner1/netflix-overseerr-bridge:latest --frequency 12
+  stephtanner1/netflix-overseerr-bridge:latest
 
 # Run weekly (168 hours)
 docker run -d \
   -e OVERSEERR_URL="http://your-overseerr-url:5055" \
   -e OVERSEERR_API_KEY="your-api-key" \
+  -e RUN_FREQUENCY=168 \
   --name netflix-overseerr-bridge \
-  stephtanner1/netflix-overseerr-bridge:latest --frequency 168
+  stephtanner1/netflix-overseerr-bridge:latest
 ```
 
 Common frequency values:
@@ -80,7 +84,6 @@ Common frequency values:
 - 168: Weekly
 - 720: Monthly (30 days)
 - 8760: Yearly
-
 
 ## Notes
 

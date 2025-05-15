@@ -251,5 +251,16 @@ if __name__ == "__main__":
     parser.add_argument('--frequency', type=float, help='Run frequency in hours (e.g., 24 for daily, 168 for weekly)')
     args = parser.parse_args()
     
+    # Check for frequency in environment variable first, then command line argument
+    run_frequency = os.getenv('RUN_FREQUENCY')
+    if run_frequency:
+        try:
+            run_frequency = float(run_frequency)
+        except ValueError:
+            logger.error("RUN_FREQUENCY environment variable must be a number")
+            sys.exit(1)
+    else:
+        run_frequency = args.frequency
+    
     bridge = NetflixOverseerrBridge()
-    bridge.run(args.frequency) 
+    bridge.run(run_frequency) 
