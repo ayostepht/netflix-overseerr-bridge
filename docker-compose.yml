@@ -1,0 +1,9 @@
+version: '3'
+services:
+  netflix-overseerr-bridge:
+    container_name: netflix-overseerr-bridge
+    image: stephtanner/netflix-overseerr-bridge:latest
+    environment:
+      - OVERSEERR_URL=${OVERSEERR_URL}
+      - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
+    restart: unless-stopped 
