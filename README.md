@@ -24,7 +24,7 @@ version: '3'
 services:
   netflix-overseerr-bridge:
     container_name: netflix-overseerr-bridge
-    image: stephtanner/netflix-overseerr-bridge:latest
+    image: stephtanner1/netflix-overseerr-bridge:latest
     environment:
       - OVERSEERR_URL=${OVERSEERR_URL}
       - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
@@ -51,7 +51,7 @@ docker run -d \
   -e OVERSEERR_URL="http://your-overseerr-url:5055" \
   -e OVERSEERR_API_KEY="your-api-key" \
   --name netflix-overseerr-bridge \
-  stephtanner/netflix-overseerr-bridge:latest
+  stephtanner1/netflix-overseerr-bridge:latest
 ```
 
 ## Image Versions
