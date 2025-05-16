@@ -6,4 +6,6 @@ services:
       - OVERSEERR_URL=${OVERSEERR_URL}
       - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
       - RUN_FREQUENCY=24  # Default to 24 hours if not set
+      - NETFLIX_COUNTRY="Japan"  # Using quotes for better UX
+      - DRY_RUN=false  # Optional: Enable dry run mode, defaults to false
     restart: unless-stopped 

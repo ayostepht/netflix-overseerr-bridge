@@ -31,7 +31,7 @@ services:
       - OVERSEERR_URL=${OVERSEERR_URL}
       - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
       - RUN_FREQUENCY=24  # Optional: Set run frequency in hours (e.g., 24 for daily)
-      - NETFLIX_COUNTRY="United States"  # Optional: Set country for Netflix top 10 list
+      - NETFLIX_COUNTRY='United States'  # Optional: Set country for Netflix top 10 list
       - DRY_RUN=false  # Optional: Enable dry run mode, defaults to false
     restart: unless-stopped
 ```
@@ -57,7 +57,7 @@ docker run -d \
   -e OVERSEERR_URL="http://your-overseerr-url:5055" \
   -e OVERSEERR_API_KEY="your-api-key" \
   -e RUN_FREQUENCY=24 \
-  -e NETFLIX_COUNTRY="United States" \
+  -e NETFLIX_COUNTRY='United States' \
   -e DRY_RUN=false \
   --name netflix-overseerr-bridge \
   stephtanner1/netflix-overseerr-bridge:latest
@@ -65,10 +65,25 @@ docker run -d \
 
 ## Country Selection
 
-The `NETFLIX_COUNTRY` environment variable allows you to specify which country's Netflix top 10 list to sync. Country names should be wrapped in quotes, especially when they contain spaces. Examples:
+The `NETFLIX_COUNTRY` environment variable allows you to specify which country's Netflix top 10 list to sync. The country name must match exactly as it appears in Netflix's data. When you run the script, it will log the available countries in the Netflix data.
 
-Common country values:
-- "United States" (default)
+In docker-compose.yml, use double quotes for better readability (they will be stripped by Docker):
+```yaml
+environment:
+  - NETFLIX_COUNTRY="United Kingdom"  # Using quotes for better UX
+  - NETFLIX_COUNTRY="Japan"  # Using quotes for better UX
+```
+
+When running manually from the command line, any type of quotes will work:
+```bash
+# All of these work:
+python src/scraper.py --country "United Kingdom"
+python src/scraper.py --country 'United Kingdom'
+python src/scraper.py --country United\ Kingdom
+```
+
+Common country values (exact names from Netflix data):
+- "United States"
 - "United Kingdom"
 - "Japan"
 - "Germany"
@@ -79,7 +94,7 @@ Common country values:
 - "India"
 - "Canada"
 
-Note: Make sure to use the exact country name as it appears in Netflix's data. The country name is case-sensitive.
+Note: The country name is case-sensitive and must match exactly as it appears in Netflix's data. If you're unsure of the exact name, run the script once and check the logs for the list of available countries.
 
 ## Manual Execution
 
@@ -114,7 +129,7 @@ docker run -d \
   -e OVERSEERR_URL="http://your-overseerr-url:5055" \
   -e OVERSEERR_API_KEY="your-api-key" \
   -e RUN_FREQUENCY=12 \
-  -e NETFLIX_COUNTRY="United States" \
+  -e NETFLIX_COUNTRY='United States' \
   --name netflix-overseerr-bridge \
   stephtanner1/netflix-overseerr-bridge:latest
 
@@ -123,7 +138,7 @@ docker run -d \
   -e OVERSEERR_URL="http://your-overseerr-url:5055" \
   -e OVERSEERR_API_KEY="your-api-key" \
   -e RUN_FREQUENCY=168 \
-  -e NETFLIX_COUNTRY="United States" \
+  -e NETFLIX_COUNTRY='United States' \
   --name netflix-overseerr-bridge \
   stephtanner1/netflix-overseerr-bridge:latest
 ```
@@ -147,7 +162,7 @@ docker-compose run --rm netflix-overseerr-bridge --dry-run
 docker run --rm \
   -e OVERSEERR_URL="http://your-overseerr-url:5055" \
   -e OVERSEERR_API_KEY="your-api-key" \
-  -e NETFLIX_COUNTRY="United States" \
+  -e NETFLIX_COUNTRY='United States' \
   stephtanner1/netflix-overseerr-bridge:latest --dry-run
 ```
 

@@ -26,7 +26,15 @@ class NetflixOverseerrBridge:
         # Validate Overseerr configuration
         self.overseerr_url = os.getenv('OVERSEERR_URL')
         self.overseerr_api_key = os.getenv('OVERSEERR_API_KEY')
-        self.country = os.getenv('NETFLIX_COUNTRY', 'United States')  # Default to United States
+        country = os.getenv('NETFLIX_COUNTRY', 'United States')  # Default to United States
+        # Strip any quotes from the country name
+        self.country = country.strip('"\'')
+        
+        # Log environment variables for debugging
+        logger.info(f"Environment variables:")
+        logger.info(f"OVERSEERR_URL: {self.overseerr_url}")
+        logger.info(f"NETFLIX_COUNTRY: {self.country}")
+        logger.info(f"DRY_RUN: {os.getenv('DRY_RUN', 'not set')}")
         
         if not self.overseerr_url or not self.overseerr_api_key:
             logger.error("Missing required environment variables!")
@@ -82,11 +90,16 @@ class NetflixOverseerrBridge:
             # Parse TSV data
             tsv_data = list(csv.DictReader(io.StringIO(response.text), delimiter='\t'))
             
+            # Get unique country names for debugging
+            available_countries = sorted(set(row['country_name'] for row in tsv_data))
+            logger.info(f"Available countries in Netflix data: {', '.join(available_countries)}")
+            
             # Filter for selected country data
             country_data = [row for row in tsv_data if row['country_name'] == self.country]
             
             if not country_data:
                 logger.error(f"No data found for {self.country}")
+                logger.error(f"Please use one of the available countries listed above")
                 return [], []
             
             # Get the most recent week
