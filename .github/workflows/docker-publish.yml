@@ -2,9 +2,9 @@ name: Docker Build and Publish
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "beta" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "beta" ]
 
 env:
   REGISTRY: docker.io
@@ -37,6 +37,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=beta,enable={{branch=='beta'}}
             type=semver,pattern={{version}}
             type=sha,format=short
 
