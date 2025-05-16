@@ -263,6 +263,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Netflix Top 10 to Overseerr Bridge')
     parser.add_argument('--frequency', type=float, help='Run frequency in hours (e.g., 24 for daily, 168 for weekly)')
     parser.add_argument('--dry-run', action='store_true', help='Perform a dry run without making actual requests')
+    parser.add_argument('--country', type=str, help='Specify which country\'s Netflix top 10 list to sync (e.g., "United Kingdom")')
     args = parser.parse_args()
     
     # Check for frequency in environment variable first, then command line argument
@@ -275,6 +276,11 @@ if __name__ == "__main__":
             sys.exit(1)
     else:
         run_frequency = args.frequency
+    
+    # Override country from command line if specified
+    if args.country:
+        os.environ['NETFLIX_COUNTRY'] = args.country
+        logger.info(f"Using country from command line: {args.country}")
     
     bridge = NetflixOverseerrBridge(dry_run=args.dry_run)
     bridge.run(run_frequency) 

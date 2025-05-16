@@ -87,6 +87,29 @@ Common country values:
 
 Note: Make sure to use the exact country name as it appears in Netflix's data. The country name is case-sensitive.
 
+## Manual Execution
+
+You can manually trigger the script at any time by executing into the container:
+
+```bash
+# Execute into the container
+docker exec -it netflix-overseerr-bridge /bin/bash
+
+# Run the script with default settings
+python src/scraper.py
+
+# Run in dry run mode
+python src/scraper.py --dry-run
+
+# Run with a specific country
+python src/scraper.py --country "United Kingdom"
+
+# Run with both dry run and country
+python src/scraper.py --dry-run --country "United Kingdom"
+```
+
+This is useful for testing different configurations or manually triggering a sync.
+
 ## Run Frequency
 
 By default, the container runs once per day at 2 AM. You can customize the run frequency using the `RUN_FREQUENCY` environment variable:
