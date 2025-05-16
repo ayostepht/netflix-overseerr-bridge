@@ -282,5 +282,10 @@ if __name__ == "__main__":
         os.environ['NETFLIX_COUNTRY'] = args.country
         logger.info(f"Using country from command line: {args.country}")
     
-    bridge = NetflixOverseerrBridge(dry_run=args.dry_run)
+    # Check for dry run in environment variable first, then command line argument
+    dry_run = os.getenv('DRY_RUN', '').lower() in ('true', '1', 'yes')
+    if dry_run:
+        logger.info("Dry run mode enabled via environment variable")
+    
+    bridge = NetflixOverseerrBridge(dry_run=dry_run or args.dry_run)
     bridge.run(run_frequency) 

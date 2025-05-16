@@ -16,6 +16,7 @@ The container requires the following environment variables:
 - `OVERSEERR_API_KEY`: Your Overseerr API key
 - `RUN_FREQUENCY`: (Optional) Run frequency in hours (e.g., 24 for daily, 168 for weekly)
 - `NETFLIX_COUNTRY`: (Optional) The country's Netflix top 10 list to sync (e.g., "United States", "United Kingdom", "Japan"). Defaults to "United States"
+- `DRY_RUN`: (Optional) Set to "true", "1", or "yes" to enable dry run mode. Defaults to false.
 
 ## Quick Start with Docker Compose
 
@@ -30,7 +31,8 @@ services:
       - OVERSEERR_URL=${OVERSEERR_URL}
       - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
       - RUN_FREQUENCY=24  # Optional: Set run frequency in hours (e.g., 24 for daily)
-      - NETFLIX_COUNTRY=United States  # Optional: Set country for Netflix top 10 list
+      - NETFLIX_COUNTRY="United States"  # Optional: Set country for Netflix top 10 list
+      - DRY_RUN=false  # Optional: Enable dry run mode, defaults to false
     restart: unless-stopped
 ```
 
@@ -39,7 +41,6 @@ services:
 OVERSEERR_URL=http://your-overseerr-url:5055
 OVERSEERR_API_KEY=your-api-key
 RUN_FREQUENCY=24  # Optional: Set run frequency in hours
-NETFLIX_COUNTRY="United States"  # Optional: Set country for Netflix top 10 list (use quotes for country names with spaces)
 ```
 
 3. Run the container:
@@ -57,6 +58,7 @@ docker run -d \
   -e OVERSEERR_API_KEY="your-api-key" \
   -e RUN_FREQUENCY=24 \
   -e NETFLIX_COUNTRY="United States" \
+  -e DRY_RUN=false \
   --name netflix-overseerr-bridge \
   stephtanner1/netflix-overseerr-bridge:latest
 ```
@@ -64,14 +66,6 @@ docker run -d \
 ## Country Selection
 
 The `NETFLIX_COUNTRY` environment variable allows you to specify which country's Netflix top 10 list to sync. Country names should be wrapped in quotes, especially when they contain spaces. Examples:
-
-```bash
-# In .env file:
-NETFLIX_COUNTRY="United States"
-NETFLIX_COUNTRY="United Kingdom"
-NETFLIX_COUNTRY="New Zealand"
-NETFLIX_COUNTRY="South Korea"
-```
 
 Common country values:
 - "United States" (default)
@@ -140,13 +134,6 @@ Common frequency values:
 - 720: Monthly (30 days)
 - 8760: Yearly
 
-## Notes
-
-- The container will fetch Netflix's top 10 content and attempt to request each item in Overseerr
-- If a title is not found in Overseerr, it will be logged and skipped
-- The script includes a 1-second delay between requests to be respectful to the Overseerr API
-- All actions are logged for monitoring and debugging
-- The container uses Python 3.11 and runs the scraper script automatically on startup
 
 ## Dry Run Mode
 
@@ -169,3 +156,11 @@ In dry run mode, the script will:
 - Search for titles in Overseerr
 - Log what would be requested without making actual requests
 - Show the TMDB IDs that would be used for each request
+
+## Notes
+
+- The container will fetch Netflix's top 10 content and attempt to request each item in Overseerr
+- If a title is not found in Overseerr, it will be logged and skipped
+- The script includes a 1-second delay between requests to be respectful to the Overseerr API
+- All actions are logged for monitoring and debugging
+- The container uses Python 3.11 and runs the scraper script automatically on startup
