@@ -39,7 +39,7 @@ services:
 OVERSEERR_URL=http://your-overseerr-url:5055
 OVERSEERR_API_KEY=your-api-key
 RUN_FREQUENCY=24  # Optional: Set run frequency in hours
-NETFLIX_COUNTRY=United States  # Optional: Set country for Netflix top 10 list
+NETFLIX_COUNTRY="United States"  # Optional: Set country for Netflix top 10 list (use quotes for country names with spaces)
 ```
 
 3. Run the container:
@@ -56,10 +56,36 @@ docker run -d \
   -e OVERSEERR_URL="http://your-overseerr-url:5055" \
   -e OVERSEERR_API_KEY="your-api-key" \
   -e RUN_FREQUENCY=24 \
-  -e NETFLIX_COUNTRY=United States \
+  -e NETFLIX_COUNTRY="United States" \
   --name netflix-overseerr-bridge \
   stephtanner1/netflix-overseerr-bridge:latest
 ```
+
+## Country Selection
+
+The `NETFLIX_COUNTRY` environment variable allows you to specify which country's Netflix top 10 list to sync. Country names should be wrapped in quotes, especially when they contain spaces. Examples:
+
+```bash
+# In .env file:
+NETFLIX_COUNTRY="United States"
+NETFLIX_COUNTRY="United Kingdom"
+NETFLIX_COUNTRY="New Zealand"
+NETFLIX_COUNTRY="South Korea"
+```
+
+Common country values:
+- "United States" (default)
+- "United Kingdom"
+- "Japan"
+- "Germany"
+- "France"
+- "Brazil"
+- "Australia"
+- "South Korea"
+- "India"
+- "Canada"
+
+Note: Make sure to use the exact country name as it appears in Netflix's data. The country name is case-sensitive.
 
 ## Run Frequency
 
@@ -71,7 +97,7 @@ docker run -d \
   -e OVERSEERR_URL="http://your-overseerr-url:5055" \
   -e OVERSEERR_API_KEY="your-api-key" \
   -e RUN_FREQUENCY=12 \
-  -e NETFLIX_COUNTRY=United States \
+  -e NETFLIX_COUNTRY="United States" \
   --name netflix-overseerr-bridge \
   stephtanner1/netflix-overseerr-bridge:latest
 
@@ -80,7 +106,7 @@ docker run -d \
   -e OVERSEERR_URL="http://your-overseerr-url:5055" \
   -e OVERSEERR_API_KEY="your-api-key" \
   -e RUN_FREQUENCY=168 \
-  -e NETFLIX_COUNTRY=United States \
+  -e NETFLIX_COUNTRY="United States" \
   --name netflix-overseerr-bridge \
   stephtanner1/netflix-overseerr-bridge:latest
 ```
