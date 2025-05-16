@@ -19,12 +19,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class NetflixOverseerrBridge:
-    def __init__(self):
+    def __init__(self, dry_run=False):
         self.netflix_tsv_url = "https://www.netflix.com/tudum/top10/data/all-weeks-countries.tsv"
+        self.dry_run = dry_run
         
         # Validate Overseerr configuration
         self.overseerr_url = os.getenv('OVERSEERR_URL')
         self.overseerr_api_key = os.getenv('OVERSEERR_API_KEY')
+        self.country = os.getenv('NETFLIX_COUNTRY', 'United States')  # Default to United States
         
         if not self.overseerr_url or not self.overseerr_api_key:
             logger.error("Missing required environment variables!")
@@ -80,19 +82,19 @@ class NetflixOverseerrBridge:
             # Parse TSV data
             tsv_data = list(csv.DictReader(io.StringIO(response.text), delimiter='\t'))
             
-            # Filter for US data
-            us_data = [row for row in tsv_data if row['country_name'] == 'United States']
+            # Filter for selected country data
+            country_data = [row for row in tsv_data if row['country_name'] == self.country]
             
-            if not us_data:
-                logger.error("No data found for United States")
+            if not country_data:
+                logger.error(f"No data found for {self.country}")
                 return [], []
             
             # Get the most recent week
-            most_recent_week = max(row['week'] for row in us_data)
-            logger.info(f"Processing data for week: {most_recent_week}")
+            most_recent_week = max(row['week'] for row in country_data)
+            logger.info(f"Processing data for {self.country} - week: {most_recent_week}")
             
             # Filter for most recent week
-            recent_data = [row for row in us_data if row['week'] == most_recent_week]
+            recent_data = [row for row in country_data if row['week'] == most_recent_week]
             
             # Separate movies and TV shows
             movies = []
@@ -183,6 +185,10 @@ class NetflixOverseerrBridge:
                         'is4k': False
                     }
                 
+                if self.dry_run:
+                    logger.info(f"[DRY RUN] Would request {title} ({media_type}) with ID {media_id}")
+                    return True
+                
                 request_response = self.session.post(
                     request_url,
                     json=request_data,
@@ -256,6 +262,7 @@ class NetflixOverseerrBridge:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Netflix Top 10 to Overseerr Bridge')
     parser.add_argument('--frequency', type=float, help='Run frequency in hours (e.g., 24 for daily, 168 for weekly)')
+    parser.add_argument('--dry-run', action='store_true', help='Perform a dry run without making actual requests')
     args = parser.parse_args()
     
     # Check for frequency in environment variable first, then command line argument
@@ -269,5 +276,5 @@ if __name__ == "__main__":
     else:
         run_frequency = args.frequency
     
-    bridge = NetflixOverseerrBridge()
+    bridge = NetflixOverseerrBridge(dry_run=args.dry_run)
     bridge.run(run_frequency) 

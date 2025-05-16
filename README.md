@@ -15,6 +15,7 @@ The container requires the following environment variables:
 - `OVERSEERR_URL`: The URL of your Overseerr instance (e.g., `http://overseerr:5055`)
 - `OVERSEERR_API_KEY`: Your Overseerr API key
 - `RUN_FREQUENCY`: (Optional) Run frequency in hours (e.g., 24 for daily, 168 for weekly)
+- `NETFLIX_COUNTRY`: (Optional) The country's Netflix top 10 list to sync (e.g., "United States", "United Kingdom", "Japan"). Defaults to "United States"
 
 ## Quick Start with Docker Compose
 
@@ -29,6 +30,7 @@ services:
       - OVERSEERR_URL=${OVERSEERR_URL}
       - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
       - RUN_FREQUENCY=24  # Optional: Set run frequency in hours (e.g., 24 for daily)
+      - NETFLIX_COUNTRY=United States  # Optional: Set country for Netflix top 10 list
     restart: unless-stopped
 ```
 
@@ -37,6 +39,7 @@ services:
 OVERSEERR_URL=http://your-overseerr-url:5055
 OVERSEERR_API_KEY=your-api-key
 RUN_FREQUENCY=24  # Optional: Set run frequency in hours
+NETFLIX_COUNTRY=United States  # Optional: Set country for Netflix top 10 list
 ```
 
 3. Run the container:
@@ -53,6 +56,7 @@ docker run -d \
   -e OVERSEERR_URL="http://your-overseerr-url:5055" \
   -e OVERSEERR_API_KEY="your-api-key" \
   -e RUN_FREQUENCY=24 \
+  -e NETFLIX_COUNTRY=United States \
   --name netflix-overseerr-bridge \
   stephtanner1/netflix-overseerr-bridge:latest
 ```
@@ -67,6 +71,7 @@ docker run -d \
   -e OVERSEERR_URL="http://your-overseerr-url:5055" \
   -e OVERSEERR_API_KEY="your-api-key" \
   -e RUN_FREQUENCY=12 \
+  -e NETFLIX_COUNTRY=United States \
   --name netflix-overseerr-bridge \
   stephtanner1/netflix-overseerr-bridge:latest
 
@@ -75,6 +80,7 @@ docker run -d \
   -e OVERSEERR_URL="http://your-overseerr-url:5055" \
   -e OVERSEERR_API_KEY="your-api-key" \
   -e RUN_FREQUENCY=168 \
+  -e NETFLIX_COUNTRY=United States \
   --name netflix-overseerr-bridge \
   stephtanner1/netflix-overseerr-bridge:latest
 ```
@@ -92,3 +98,25 @@ Common frequency values:
 - The script includes a 1-second delay between requests to be respectful to the Overseerr API
 - All actions are logged for monitoring and debugging
 - The container uses Python 3.11 and runs the scraper script automatically on startup
+
+## Dry Run Mode
+
+You can run the container in "dry run" mode to see what would be requested without actually making the requests. This is useful for testing and verifying the configuration. To enable dry run mode, add the `--dry-run` flag when running the container:
+
+```bash
+# Using Docker Compose
+docker-compose run --rm netflix-overseerr-bridge --dry-run
+
+# Using Docker directly
+docker run --rm \
+  -e OVERSEERR_URL="http://your-overseerr-url:5055" \
+  -e OVERSEERR_API_KEY="your-api-key" \
+  -e NETFLIX_COUNTRY="United States" \
+  stephtanner1/netflix-overseerr-bridge:latest --dry-run
+```
+
+In dry run mode, the script will:
+- Fetch the Netflix top 10 list as normal
+- Search for titles in Overseerr
+- Log what would be requested without making actual requests
+- Show the TMDB IDs that would be used for each request
