@@ -9,5 +9,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source code
 COPY src/ .
 
+# Set environment variables to prevent log truncation
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
 # Run the script
 CMD ["python", "scraper.py"] 
