@@ -8,4 +8,11 @@ services:
       - RUN_FREQUENCY=24  # Default to 24 hours if not set
       - NETFLIX_COUNTRY="Japan"  # Using quotes for better UX
       - DRY_RUN=false  # Optional: Enable dry run mode, defaults to false
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
     restart: unless-stopped 
