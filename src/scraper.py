@@ -154,9 +154,19 @@ class NetflixOverseerrBridge:
                 # Get all results and sort by release date
                 results = search_results['results']
                 if len(results) > 1:
-                    # Sort by release date (most recent first)
-                    results.sort(key=lambda x: x.get('releaseDate', '') or x.get('firstAirDate', ''), reverse=True)
-                    logger.info(f"Found {len(results)} matches for {title}, using most recent release from {results[0].get('releaseDate', '') or results[0].get('firstAirDate', '')}")
+                    # First, try to find exact title matches with correct media type
+                    exact_matches = [r for r in results if r.get('title', r.get('name', '')).lower() == title.lower() and r.get('mediaType') == media_type]
+                    if exact_matches:
+                        # Use exact match with most recent date
+                        exact_matches.sort(key=lambda x: x.get('releaseDate', '') or x.get('firstAirDate', ''), reverse=True)
+                        results = exact_matches
+                        logger.info(f"Found {len(results)} exact title matches for {title}, using most recent release from {results[0].get('releaseDate', '') or results[0].get('firstAirDate', '')}")
+                    else:
+                        # Fall back to sorting by release date (most recent first)
+                        results.sort(key=lambda x: x.get('releaseDate', '') or x.get('firstAirDate', ''), reverse=True)
+                        logger.info(f"Found {len(results)} matches for {title}, using most recent release from {results[0].get('releaseDate', '') or results[0].get('firstAirDate', '')}")
+                else:
+                    logger.info(f"Found 1 match for {title}")
                 
                 # Get the first (most recent) result
                 media_item = results[0]
@@ -164,13 +174,12 @@ class NetflixOverseerrBridge:
                 
                 # For TV shows, we need to get the first season
                 if media_type == 'tv':
-                    # Request the first season directly without additional API call
+                    # First try requesting without specifying seasons
                     request_url = f"{self.overseerr_url}/api/v1/request"
                     request_data = {
                         'mediaId': media_id,
                         'mediaType': media_type,
-                        'is4k': False,
-                        'seasons': [1]  # Request first season
+                        'is4k': False
                     }
                 else:
                     # For movies, use the original request format
@@ -191,6 +200,43 @@ class NetflixOverseerrBridge:
                     headers=search_headers
                 )
                 
+                # For TV shows, if the first attempt fails, try with available seasons
+                if media_type == 'tv' and request_response.status_code not in [201, 409]:
+                    error_msg = request_response.json().get('message', 'Unknown error')
+                    if 'Failed to fetch TV show details' in error_msg or '404' in error_msg or 'Cannot read properties of undefined' in error_msg:
+                        # Try requesting season 1 first
+                        logger.info(f"First attempt failed for {title}, trying with season 1...")
+                        request_data['seasons'] = [1]
+                        request_response = self.session.post(
+                            request_url,
+                            json=request_data,
+                            headers=search_headers
+                        )
+                        
+                        # If season 1 fails with "No seasons available", try season 2
+                        if request_response.status_code not in [201, 409]:
+                            error_msg = request_response.json().get('message', 'Unknown error')
+                            if 'No seasons available to request' in error_msg:
+                                logger.info(f"Season 1 not available for {title}, trying season 2...")
+                                request_data['seasons'] = [2]
+                                request_response = self.session.post(
+                                    request_url,
+                                    json=request_data,
+                                    headers=search_headers
+                                )
+                                
+                                # If season 2 fails with "No seasons available", try season 3
+                                if request_response.status_code not in [201, 409]:
+                                    error_msg = request_response.json().get('message', 'Unknown error')
+                                    if 'No seasons available to request' in error_msg:
+                                        logger.info(f"Season 2 not available for {title}, trying season 3...")
+                                        request_data['seasons'] = [3]
+                                        request_response = self.session.post(
+                                            request_url,
+                                            json=request_data,
+                                            headers=search_headers
+                                        )
+                
                 if request_response.status_code == 201:
                     logger.info(f"Successfully requested {title}")
                     return {'status': 'new_request', 'message': 'Successfully requested'}
@@ -202,9 +248,15 @@ class NetflixOverseerrBridge:
                     if 'Failed to fetch movie details' in error_msg:
                         logger.warning(f"Movie {title} not found in TMDB")
                         return {'status': 'not_found', 'message': 'Movie not found in TMDB'}
+                    elif 'Failed to fetch TV show details' in error_msg:
+                        logger.warning(f"TV show {title} not found in TMDB")
+                        return {'status': 'not_found', 'message': 'TV show not found in TMDB'}
                     elif 'Could not find any entity of type "Media"' in error_msg:
                         logger.warning(f"Media {title} not found in Overseerr database")
                         return {'status': 'not_found', 'message': 'Media not found in Overseerr database'}
+                    elif 'Cannot read properties of undefined' in error_msg:
+                        logger.warning(f"TV show {title} not found in Overseerr database")
+                        return {'status': 'not_found', 'message': 'TV show not found in Overseerr database'}
                     elif 'No seasons available to request' in error_msg:
                         logger.info(f"Season 1 of {title} is already available or requested")
                         return {'status': 'existing_request', 'message': 'Season already available or requested'}
