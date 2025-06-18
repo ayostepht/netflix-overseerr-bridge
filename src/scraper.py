@@ -149,7 +149,7 @@ class NetflixOverseerrBridge:
                 search_results = search_response.json()
                 if not search_results.get('results'):
                     logger.warning(f"No results found for {title} in TMDB")
-                    return False
+                    return {'status': 'not_found', 'message': 'No results found in TMDB'}
                 
                 # Get all results and sort by release date
                 results = search_results['results']
@@ -172,14 +172,15 @@ class NetflixOverseerrBridge:
                         error_msg = tv_response.json().get('message', 'Unknown error')
                         if 'Unable to retrieve series' in error_msg:
                             logger.warning(f"TV show {title} not found in TMDB")
+                            return {'status': 'not_found', 'message': 'TV show not found in TMDB'}
                         else:
                             logger.warning(f"Failed to get TV details for {title}: {tv_response.status_code} - {error_msg}")
-                        return False
+                            return {'status': 'error', 'message': f'Failed to get TV details: {error_msg}'}
                         
                     tv_data = tv_response.json()
                     if not tv_data.get('seasons'):
                         logger.warning(f"No seasons found for {title}")
-                        return False
+                        return {'status': 'error', 'message': 'No seasons found'}
                         
                     # Request the first season
                     request_url = f"{self.overseerr_url}/api/v1/request"
@@ -200,7 +201,7 @@ class NetflixOverseerrBridge:
                 
                 if self.dry_run:
                     logger.info(f"[DRY RUN] Would request {title} ({media_type}) with ID {media_id}")
-                    return True
+                    return {'status': 'dry_run', 'message': 'Dry run - would request'}
                 
                 request_response = self.session.post(
                     request_url,
@@ -210,51 +211,88 @@ class NetflixOverseerrBridge:
                 
                 if request_response.status_code == 201:
                     logger.info(f"Successfully requested {title}")
-                    return True
+                    return {'status': 'new_request', 'message': 'Successfully requested'}
                 elif request_response.status_code == 409:
                     logger.info(f"Request for {title} already exists")
-                    return True  # Consider this a success
+                    return {'status': 'existing_request', 'message': 'Request already exists'}
                 else:
                     error_msg = request_response.json().get('message', 'Unknown error')
                     if 'Failed to fetch movie details' in error_msg:
                         logger.warning(f"Movie {title} not found in TMDB")
+                        return {'status': 'not_found', 'message': 'Movie not found in TMDB'}
                     elif 'Could not find any entity of type "Media"' in error_msg:
                         logger.warning(f"Media {title} not found in Overseerr database")
+                        return {'status': 'not_found', 'message': 'Media not found in Overseerr database'}
                     elif 'No seasons available to request' in error_msg:
                         logger.info(f"Season 1 of {title} is already available or requested")
-                        return True  # Consider this a success
+                        return {'status': 'existing_request', 'message': 'Season already available or requested'}
                     else:
                         logger.warning(f"Failed to request {title}: {request_response.status_code} - {error_msg}")
-                    return False
+                        return {'status': 'error', 'message': f'Request failed: {error_msg}'}
             else:
                 logger.error(f"Search failed for {title}: {search_response.status_code} - {search_response.text}")
-                return False
+                return {'status': 'error', 'message': f'Search failed: {search_response.status_code}'}
         except Exception as e:
             logger.error(f"Error requesting {title} in Overseerr: {str(e)}")
-            return False
+            return {'status': 'error', 'message': f'Exception: {str(e)}'}
 
     def run(self, run_frequency_hours=None):
         while True:
             logger.info("Starting Netflix Top 10 to Overseerr bridge")
             
+            # Initialize summary tracking
+            summary = {
+                'top_movies': [],
+                'top_shows': [],
+                'new_downloads': [],
+                'existing_downloads': [],
+                'errors': []
+            }
+            
             # Get top 10 titles for both movies and TV shows
             movies, tv_shows = self.get_netflix_top10()
             if not movies and not tv_shows:
                 logger.error("Failed to fetch Netflix top 10")
+                summary['errors'].append("Failed to fetch Netflix top 10")
             else:
+                # Store top 10 lists
+                summary['top_movies'] = movies
+                summary['top_shows'] = tv_shows
+                
                 # Request each movie
                 logger.info("Processing movies...")
                 for title in movies:
                     logger.info(f"Processing movie: {title}")
-                    self.request_in_overseerr(title, 'movie')
+                    try:
+                        result = self.request_in_overseerr(title, 'movie')
+                        if result['status'] == 'new_request':
+                            summary['new_downloads'].append(f"{title} (Movie)")
+                        elif result['status'] == 'existing_request':
+                            summary['existing_downloads'].append(f"{title} (Movie)")
+                        else:
+                            summary['errors'].append(f"Failed to request movie: {title} - {result['message']}")
+                    except Exception as e:
+                        summary['errors'].append(f"Exception processing movie {title}: {str(e)}")
                     time.sleep(1)  # Be nice to the API
 
                 # Request each TV show
                 logger.info("Processing TV shows...")
                 for title in tv_shows:
                     logger.info(f"Processing TV show: {title}")
-                    self.request_in_overseerr(title, 'tv')
+                    try:
+                        result = self.request_in_overseerr(title, 'tv')
+                        if result['status'] == 'new_request':
+                            summary['new_downloads'].append(f"{title} (TV)")
+                        elif result['status'] == 'existing_request':
+                            summary['existing_downloads'].append(f"{title} (TV)")
+                        else:
+                            summary['errors'].append(f"Failed to request TV show: {title} - {result['message']}")
+                    except Exception as e:
+                        summary['errors'].append(f"Exception processing TV show {title}: {str(e)}")
                     time.sleep(1)  # Be nice to the API
+
+            # Display summary
+            self._display_summary(summary)
 
             if run_frequency_hours is not None:
                 # Use the specified run frequency
@@ -271,6 +309,94 @@ class NetflixOverseerrBridge:
             logger.info(f"Next run scheduled for {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
             logger.info(f"Sleeping for {sleep_seconds/3600:.1f} hours")
             time.sleep(sleep_seconds)
+
+    def _display_summary(self, summary):
+        """Display a summary of the processing results"""
+        logger.info("=" * 60)
+        logger.info("PROCESSING SUMMARY")
+        logger.info("=" * 60)
+        
+        # Current Top 10 Shows
+        logger.info("Current Top 10 Shows:")
+        if summary['top_shows']:
+            for i, show in enumerate(summary['top_shows'], 1):
+                # Check if this show was successfully processed
+                new_request = any(show in download for download in summary['new_downloads'])
+                existing_request = any(show in download for download in summary['existing_downloads'])
+                
+                if new_request:
+                    status = "✓ New Request"
+                elif existing_request:
+                    status = "✓ Already Requested"
+                else:
+                    status = "✗ Failed"
+                
+                logger.info(f"  {i:2d}. {show} - {status}")
+        else:
+            logger.info("  No shows found")
+        
+        logger.info("")
+        
+        # Current Top 10 Movies
+        logger.info("Current Top 10 Movies:")
+        if summary['top_movies']:
+            for i, movie in enumerate(summary['top_movies'], 1):
+                # Check if this movie was successfully processed
+                new_request = any(movie in download for download in summary['new_downloads'])
+                existing_request = any(movie in download for download in summary['existing_downloads'])
+                
+                if new_request:
+                    status = "✓ New Request"
+                elif existing_request:
+                    status = "✓ Already Requested"
+                else:
+                    status = "✗ Failed"
+                
+                logger.info(f"  {i:2d}. {movie} - {status}")
+        else:
+            logger.info("  No movies found")
+        
+        logger.info("")
+        
+        # New Downloads
+        logger.info("New Downloads:")
+        if summary['new_downloads']:
+            for download in summary['new_downloads']:
+                logger.info(f"  ✓ {download}")
+        else:
+            logger.info("  No new downloads")
+        
+        logger.info("")
+        
+        # Existing Downloads
+        logger.info("Existing Downloads:")
+        if summary['existing_downloads']:
+            for download in summary['existing_downloads']:
+                logger.info(f"  ✓ {download}")
+        else:
+            logger.info("  No existing downloads")
+        
+        logger.info("")
+        
+        # Errors
+        logger.info("Errors:")
+        if summary['errors']:
+            for error in summary['errors']:
+                logger.info(f"  ✗ {error}")
+        else:
+            logger.info("  No errors")
+        
+        logger.info("")
+        
+        # Summary counts
+        logger.info("Summary:")
+        logger.info(f"  Total Shows Processed: {len(summary['top_shows'])}")
+        logger.info(f"  Total Movies Processed: {len(summary['top_movies'])}")
+        logger.info(f"  New Requests: {len(summary['new_downloads'])}")
+        logger.info(f"  Existing Requests: {len(summary['existing_downloads'])}")
+        logger.info(f"  Errors: {len(summary['errors'])}")
+        
+        logger.info("=" * 60)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Netflix Top 10 to Overseerr Bridge')
