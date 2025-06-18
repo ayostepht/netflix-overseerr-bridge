@@ -310,6 +310,28 @@ class NetflixOverseerrBridge:
             logger.info(f"Sleeping for {sleep_seconds/3600:.1f} hours")
             time.sleep(sleep_seconds)
 
+    def _get_title_status(self, title, summary):
+        """
+        Determine the status of a title based on the summary data.
+        
+        Args:
+            title (str): The title to check
+            summary (dict): The summary dictionary containing new_downloads and existing_downloads
+            
+        Returns:
+            str: Status string ('✓ New Request', '✓ Already Requested', or '✗ Failed')
+        """
+        # Check for exact matches in new_downloads and existing_downloads
+        new_request = any(download.startswith(f"{title} (") for download in summary['new_downloads'])
+        existing_request = any(download.startswith(f"{title} (") for download in summary['existing_downloads'])
+        
+        if new_request:
+            return "✓ New Request"
+        elif existing_request:
+            return "✓ Already Requested"
+        else:
+            return "✗ Failed"
+
     def _display_summary(self, summary):
         """Display a summary of the processing results"""
         logger.info("=" * 60)
@@ -320,17 +342,7 @@ class NetflixOverseerrBridge:
         logger.info("Current Top 10 Shows:")
         if summary['top_shows']:
             for i, show in enumerate(summary['top_shows'], 1):
-                # Check if this show was successfully processed
-                new_request = any(show in download for download in summary['new_downloads'])
-                existing_request = any(show in download for download in summary['existing_downloads'])
-                
-                if new_request:
-                    status = "✓ New Request"
-                elif existing_request:
-                    status = "✓ Already Requested"
-                else:
-                    status = "✗ Failed"
-                
+                status = self._get_title_status(show, summary)
                 logger.info(f"  {i:2d}. {show} - {status}")
         else:
             logger.info("  No shows found")
@@ -341,17 +353,7 @@ class NetflixOverseerrBridge:
         logger.info("Current Top 10 Movies:")
         if summary['top_movies']:
             for i, movie in enumerate(summary['top_movies'], 1):
-                # Check if this movie was successfully processed
-                new_request = any(movie in download for download in summary['new_downloads'])
-                existing_request = any(movie in download for download in summary['existing_downloads'])
-                
-                if new_request:
-                    status = "✓ New Request"
-                elif existing_request:
-                    status = "✓ Already Requested"
-                else:
-                    status = "✗ Failed"
-                
+                status = self._get_title_status(movie, summary)
                 logger.info(f"  {i:2d}. {movie} - {status}")
         else:
             logger.info("  No movies found")
