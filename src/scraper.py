@@ -164,25 +164,7 @@ class NetflixOverseerrBridge:
                 
                 # For TV shows, we need to get the first season
                 if media_type == 'tv':
-                    # Get TV show details to find the first season
-                    tv_url = f"{self.overseerr_url}/api/v1/tv/{media_id}"
-                    tv_response = self.session.get(tv_url, headers=search_headers)
-                    
-                    if tv_response.status_code != 200:
-                        error_msg = tv_response.json().get('message', 'Unknown error')
-                        if 'Unable to retrieve series' in error_msg:
-                            logger.warning(f"TV show {title} not found in TMDB")
-                            return {'status': 'not_found', 'message': 'TV show not found in TMDB'}
-                        else:
-                            logger.warning(f"Failed to get TV details for {title}: {tv_response.status_code} - {error_msg}")
-                            return {'status': 'error', 'message': f'Failed to get TV details: {error_msg}'}
-                        
-                    tv_data = tv_response.json()
-                    if not tv_data.get('seasons'):
-                        logger.warning(f"No seasons found for {title}")
-                        return {'status': 'error', 'message': 'No seasons found'}
-                        
-                    # Request the first season
+                    # Request the first season directly without additional API call
                     request_url = f"{self.overseerr_url}/api/v1/request"
                     request_data = {
                         'mediaId': media_id,
