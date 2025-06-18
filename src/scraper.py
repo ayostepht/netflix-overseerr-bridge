@@ -333,72 +333,58 @@ class NetflixOverseerrBridge:
             return "✗ Failed"
 
     def _display_summary(self, summary):
-        """Display a summary of the processing results"""
-        logger.info("=" * 60)
-        logger.info("PROCESSING SUMMARY")
-        logger.info("=" * 60)
-        
-        # Current Top 10 Shows
-        logger.info("Current Top 10 Shows:")
+        """Display a summary of the processing results as a single log block with line breaks."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append("PROCESSING SUMMARY")
+        lines.append("=" * 60)
+        lines.append("Current Top 10 Shows:")
+        lines.append("=== BEGIN SHOWS ===")
         if summary['top_shows']:
             for i, show in enumerate(summary['top_shows'], 1):
                 status = self._get_title_status(show, summary)
-                logger.info(f"  {i:2d}. {show} - {status}")
+                lines.append(f"  {i:2d}. {show} - {status}")
         else:
-            logger.info("  No shows found")
-        
-        logger.info("")
-        
-        # Current Top 10 Movies
-        logger.info("Current Top 10 Movies:")
+            lines.append("  No shows found")
+        lines.append("=== END SHOWS ===\n")
+        lines.append("Current Top 10 Movies:")
+        lines.append("=== BEGIN MOVIES ===")
         if summary['top_movies']:
             for i, movie in enumerate(summary['top_movies'], 1):
                 status = self._get_title_status(movie, summary)
-                logger.info(f"  {i:2d}. {movie} - {status}")
+                lines.append(f"  {i:2d}. {movie} - {status}")
         else:
-            logger.info("  No movies found")
-        
-        logger.info("")
-        
-        # New Downloads
-        logger.info("New Downloads:")
+            lines.append("  No movies found")
+        lines.append("=== END MOVIES ===\n")
+        lines.append("New Downloads:")
         if summary['new_downloads']:
             for download in summary['new_downloads']:
-                logger.info(f"  ✓ {download}")
+                lines.append(f"  ✓ {download}")
         else:
-            logger.info("  No new downloads")
-        
-        logger.info("")
-        
-        # Existing Downloads
-        logger.info("Existing Downloads:")
+            lines.append("  No new downloads")
+        lines.append("")
+        lines.append("Existing Downloads:")
         if summary['existing_downloads']:
             for download in summary['existing_downloads']:
-                logger.info(f"  ✓ {download}")
+                lines.append(f"  ✓ {download}")
         else:
-            logger.info("  No existing downloads")
-        
-        logger.info("")
-        
-        # Errors
-        logger.info("Errors:")
+            lines.append("  No existing downloads")
+        lines.append("")
+        lines.append("Errors:")
         if summary['errors']:
             for error in summary['errors']:
-                logger.info(f"  ✗ {error}")
+                lines.append(f"  ✗ {error}")
         else:
-            logger.info("  No errors")
-        
-        logger.info("")
-        
-        # Summary counts
-        logger.info("Summary:")
-        logger.info(f"  Total Shows Processed: {len(summary['top_shows'])}")
-        logger.info(f"  Total Movies Processed: {len(summary['top_movies'])}")
-        logger.info(f"  New Requests: {len(summary['new_downloads'])}")
-        logger.info(f"  Existing Requests: {len(summary['existing_downloads'])}")
-        logger.info(f"  Errors: {len(summary['errors'])}")
-        
-        logger.info("=" * 60)
+            lines.append("  No errors")
+        lines.append("")
+        lines.append("Summary:")
+        lines.append(f"  Total Shows Processed: {len(summary['top_shows'])}")
+        lines.append(f"  Total Movies Processed: {len(summary['top_movies'])}")
+        lines.append(f"  New Requests: {len(summary['new_downloads'])}")
+        lines.append(f"  Existing Requests: {len(summary['existing_downloads'])}")
+        lines.append(f"  Errors: {len(summary['errors'])}")
+        lines.append("=" * 60)
+        logger.info('\n'.join(lines))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Netflix Top 10 to Overseerr Bridge')
