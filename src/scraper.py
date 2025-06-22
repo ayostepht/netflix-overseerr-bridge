@@ -117,7 +117,10 @@ class NetflixOverseerrBridge:
                 if row['category'] == 'Films':
                     movies.append(row['show_title'])
                 elif row['category'] == 'TV':
-                    tv_shows.append(row['show_title'])
+                    tv_shows.append({
+                        'title': row['show_title'],
+                        'season_title': row['season_title']
+                    })
             
             logger.info(f"Found {len(movies)} movies and {len(tv_shows)} TV shows for the most recent week")
             return movies[:10], tv_shows[:10]  # Return top 10 of each
@@ -125,6 +128,221 @@ class NetflixOverseerrBridge:
         except Exception as e:
             logger.error(f"Error fetching Netflix top 10: {str(e)}")
             return [], []
+
+    def _extract_season_number(self, season_title):
+        """Extract season number from season_title field.
+        
+        Args:
+            season_title (str): The season_title field from Netflix data
+            
+        Returns:
+            int or None: Season number if found, None if not found or Limited Series
+        """
+        if not season_title or season_title == 'N/A':
+            return None
+            
+        # Handle Limited Series - these should be treated as season 1
+        if 'Limited Series' in season_title:
+            return 1
+            
+        # Extract season number from patterns like "Show Name: Season 3"
+        import re
+        season_match = re.search(r'Season (\d+)', season_title)
+        if season_match:
+            return int(season_match.group(1))
+            
+        return None
+
+    def get_existing_tv_requests(self, media_id):
+        """Get existing TV show requests and their seasons from Overseerr.
+        
+        Args:
+            media_id (int): The TMDB media ID
+            
+        Returns:
+            list: List of season numbers that are already requested or available
+        """
+        try:
+            # Get TV show details to check existing requests
+            details_url = f"{self.overseerr_url}/api/v1/tv/{media_id}"
+            headers = {
+                'X-Api-Key': self.overseerr_api_key,
+                'Accept': 'application/json'
+            }
+            
+            response = self.session.get(details_url, headers=headers)
+            
+            if response.status_code != 200:
+                logger.debug(f"Could not get TV show details for media ID {media_id}: {response.status_code}")
+                return []
+            
+            tv_details = response.json()
+            existing_seasons = []
+            
+            # Check if there are any seasons in the response
+            if 'seasons' in tv_details:
+                for season in tv_details['seasons']:
+                    season_number = season.get('seasonNumber', 0)
+                    # Skip season 0 (specials) and check if season is requested or available
+                    if season_number > 0:
+                        status = season.get('status')
+                        # Status 2 = PENDING, 3 = APPROVED, 4 = DECLINED, 5 = AVAILABLE
+                        if status in [2, 3, 5]:  # PENDING, APPROVED, or AVAILABLE
+                            existing_seasons.append(season_number)
+            
+            logger.debug(f"Found existing seasons for media ID {media_id}: {existing_seasons}")
+            return sorted(existing_seasons)
+            
+        except Exception as e:
+            logger.debug(f"Error checking existing requests for media ID {media_id}: {str(e)}")
+            return []
+
+    def request_tv_show_seasons(self, title, max_season):
+        """Request TV show seasons from 1 up to max_season.
+        
+        Args:
+            title (str): The show title
+            max_season (int): Maximum season number to request
+            
+        Returns:
+            dict: Status and message about the request
+        """
+        try:
+            # Search for the title in Overseerr
+            search_url = f"{self.overseerr_url}/api/v1/search"
+            search_params = {
+                'query': quote(title),
+                'page': 1
+            }
+            search_headers = {
+                'X-Api-Key': self.overseerr_api_key,
+                'Accept': 'application/json'
+            }
+            
+            search_response = self.session.get(
+                search_url,
+                params=search_params,
+                headers=search_headers
+            )
+            
+            if search_response.status_code != 200:
+                logger.error(f"Search failed for {title}: {search_response.status_code} - {search_response.text}")
+                return {'status': 'error', 'message': f'Search failed: {search_response.status_code}'}
+            
+            search_results = search_response.json()
+            if not search_results.get('results'):
+                logger.warning(f"No results found for {title} in TMDB")
+                return {'status': 'not_found', 'message': 'No results found in TMDB'}
+            
+            # Get all results and find the best match
+            results = search_results['results']
+            tv_results = [r for r in results if r.get('mediaType') == 'tv']
+            
+            if not tv_results:
+                logger.warning(f"No TV show results found for {title}")
+                return {'status': 'not_found', 'message': 'No TV show results found'}
+            
+            # Find exact title match or use first result
+            exact_matches = [r for r in tv_results if r.get('name', '').lower() == title.lower()]
+            if exact_matches:
+                exact_matches.sort(key=lambda x: x.get('firstAirDate', ''), reverse=True)
+                media_item = exact_matches[0]
+                logger.info(f"Found exact match for {title} from {media_item.get('firstAirDate', '')}")
+            else:
+                tv_results.sort(key=lambda x: x.get('firstAirDate', ''), reverse=True)
+                media_item = tv_results[0]
+                logger.info(f"Using best match for {title} from {media_item.get('firstAirDate', '')}")
+            
+            media_id = media_item['id']
+            
+            # Check what seasons are already requested/available
+            existing_seasons = self.get_existing_tv_requests(media_id)
+            
+            # Determine which seasons we need to request
+            all_seasons_needed = list(range(1, max_season + 1))
+            seasons_to_request = [s for s in all_seasons_needed if s not in existing_seasons]
+            
+            if not seasons_to_request:
+                logger.info(f"All seasons 1-{max_season} of {title} are already requested or available")
+                return {'status': 'existing_request', 'message': f'All seasons 1-{max_season} already available or requested'}
+            
+            if existing_seasons:
+                logger.info(f"{title}: Existing seasons {existing_seasons}, will request missing seasons {seasons_to_request}")
+            else:
+                logger.info(f"{title}: No existing seasons found, will request seasons {seasons_to_request}")
+            
+            request_url = f"{self.overseerr_url}/api/v1/request"
+            request_data = {
+                'mediaId': media_id,
+                'mediaType': 'tv',
+                'seasons': seasons_to_request,
+                'is4k': False
+            }
+            
+            if self.dry_run:
+                if existing_seasons:
+                    logger.info(f"[DRY RUN] {title}: Found existing seasons {existing_seasons}, would request missing seasons {seasons_to_request}")
+                else:
+                    logger.info(f"[DRY RUN] {title}: No existing seasons found, would request seasons {seasons_to_request}")
+                return {'status': 'dry_run', 'message': f'Dry run - would request seasons {seasons_to_request}'}
+            
+            request_response = self.session.post(
+                request_url,
+                json=request_data,
+                headers=search_headers
+            )
+            
+            if request_response.status_code == 201:
+                logger.info(f"Successfully requested {title} seasons {seasons_to_request}")
+                if existing_seasons:
+                    return {'status': 'new_request', 'message': f'Successfully requested missing seasons {seasons_to_request} (existing: {existing_seasons})'}
+                else:
+                    return {'status': 'new_request', 'message': f'Successfully requested seasons {seasons_to_request}'}
+            elif request_response.status_code == 409:
+                logger.info(f"Request for {title} seasons {seasons_to_request} already exists")
+                return {'status': 'existing_request', 'message': f'Request already exists (existing: {existing_seasons})'}
+            else:
+                error_msg = request_response.json().get('message', 'Unknown error')
+                
+                # If requesting multiple seasons fails, try one by one
+                if 'No seasons available to request' in error_msg:
+                    logger.info(f"Multiple seasons request failed for {title}, trying individual missing seasons...")
+                    requested_seasons = []
+                    
+                    for season_num in seasons_to_request:
+                        request_data['seasons'] = [season_num]
+                        season_response = self.session.post(
+                            request_url,
+                            json=request_data,
+                            headers=search_headers
+                        )
+                        
+                        if season_response.status_code == 201:
+                            requested_seasons.append(season_num)
+                            logger.info(f"Successfully requested {title} season {season_num}")
+                        elif season_response.status_code == 409:
+                            logger.info(f"{title} season {season_num} already requested")
+                        else:
+                            season_error = season_response.json().get('message', 'Unknown error')
+                            if 'No seasons available to request' in season_error:
+                                logger.info(f"{title} season {season_num} already available or not found")
+                            else:
+                                logger.warning(f"Failed to request {title} season {season_num}: {season_error}")
+                    
+                    if requested_seasons:
+                        if existing_seasons:
+                            return {'status': 'new_request', 'message': f'Successfully requested missing seasons {requested_seasons} (existing: {existing_seasons})'}
+                        else:
+                            return {'status': 'new_request', 'message': f'Successfully requested seasons {requested_seasons}'}
+                    else:
+                        return {'status': 'existing_request', 'message': f'All seasons already available or requested (existing: {existing_seasons})'}
+                else:
+                    logger.warning(f"Failed to request {title}: {request_response.status_code} - {error_msg}")
+                    return {'status': 'error', 'message': f'Request failed: {error_msg}'}
+                    
+        except Exception as e:
+            logger.error(f"Error requesting {title} in Overseerr: {str(e)}")
+            return {'status': 'error', 'message': f'Exception: {str(e)}'}
 
     def request_in_overseerr(self, title, media_type):
         try:
@@ -311,14 +529,27 @@ class NetflixOverseerrBridge:
 
                 # Request each TV show
                 logger.info("Processing TV shows...")
-                for title in tv_shows:
-                    logger.info(f"Processing TV show: {title}")
+                for tv_show in tv_shows:
+                    title = tv_show['title']
+                    season_title = tv_show['season_title']
+                    max_season = self._extract_season_number(season_title)
+                    
+                    logger.info(f"Processing TV show: {title} (season_title: {season_title})")
+                    
                     try:
-                        result = self.request_in_overseerr(title, 'tv')
+                        if max_season:
+                            # Use new logic to request all seasons up to max_season
+                            logger.info(f"Requesting {title} seasons 1-{max_season}")
+                            result = self.request_tv_show_seasons(title, max_season)
+                        else:
+                            # Fall back to original logic for shows without clear season info
+                            logger.info(f"No clear season info for {title}, using original logic")
+                            result = self.request_in_overseerr(title, 'tv')
+                        
                         if result['status'] == 'new_request':
-                            summary['new_downloads'].append(f"{title} (TV)")
+                            summary['new_downloads'].append(f"{title} (TV) - {result['message']}")
                         elif result['status'] == 'existing_request':
-                            summary['existing_downloads'].append(f"{title} (TV)")
+                            summary['existing_downloads'].append(f"{title} (TV) - {result['message']}")
                         else:
                             summary['errors'].append(f"Failed to request TV show: {title} - {result['message']}")
                     except Exception as e:
@@ -376,8 +607,17 @@ class NetflixOverseerrBridge:
         lines.append("=== BEGIN SHOWS ===")
         if summary['top_shows']:
             for i, show in enumerate(summary['top_shows'], 1):
-                status = self._get_title_status(show, summary)
-                lines.append(f"  {i:2d}. {show} - {status}")
+                if isinstance(show, dict):
+                    title = show['title']
+                    season_title = show['season_title']
+                    season_num = self._extract_season_number(season_title)
+                    season_info = f" (Season {season_num})" if season_num else ""
+                    status = self._get_title_status(title, summary)
+                    lines.append(f"  {i:2d}. {title}{season_info} - {status}")
+                else:
+                    # Handle old format for backward compatibility
+                    status = self._get_title_status(show, summary)
+                    lines.append(f"  {i:2d}. {show} - {status}")
         else:
             lines.append("  No shows found")
         lines.append("=== END SHOWS ===\n")
