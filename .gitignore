@@ -18,4 +18,14 @@ ENV/
 *.log
 
 # Local scripts
-run.sh 
+run.sh
+
+# Claude Code files
+CLAUDE.md
+
+# Testing
+tests/
+requirements-dev.txt
+htmlcov/
+.coverage
+.pytest_cache/ 
