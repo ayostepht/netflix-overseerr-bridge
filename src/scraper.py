@@ -163,39 +163,146 @@ class NetflixOverseerrBridge:
             list: List of season numbers that are already requested or available
         """
         try:
-            # Get TV show details to check existing requests
-            details_url = f"{self.overseerr_url}/api/v1/tv/{media_id}"
             headers = {
                 'X-Api-Key': self.overseerr_api_key,
                 'Accept': 'application/json'
             }
             
-            response = self.session.get(details_url, headers=headers)
+            # Try to get requests for this specific media ID
+            requests_url = f"{self.overseerr_url}/api/v1/request"
+            requests_response = self.session.get(requests_url, headers=headers)
             
-            if response.status_code != 200:
-                logger.debug(f"Could not get TV show details for media ID {media_id}: {response.status_code}")
+            if requests_response.status_code == 200:
+                requests_data = requests_response.json()
+                logger.info(f"Got requests data, checking for media ID {media_id}")
+                existing_seasons = self._extract_seasons_from_requests(requests_data, media_id)
+                if existing_seasons:
+                    logger.info(f"Found existing seasons from requests API: {existing_seasons}")
+                    return existing_seasons
+            
+            # Fallback: try the media endpoint which has request status info
+            media_url = f"{self.overseerr_url}/api/v1/media/{media_id}"
+            response = self.session.get(media_url, headers=headers)
+            
+            if response.status_code == 200:
+                media_details = response.json()
+                logger.info(f"Got media details via /api/v1/media/{media_id}")
+                return self._extract_seasons_from_media(media_details)
+            else:
+                logger.info(f"Could not get media details for media ID {media_id}: {response.status_code}")
+                # Fall back to TV endpoint
+                tv_url = f"{self.overseerr_url}/api/v1/tv/{media_id}"
+                tv_response = self.session.get(tv_url, headers=headers)
+                if tv_response.status_code == 200:
+                    tv_details = tv_response.json()
+                    logger.info(f"Got TV details via /api/v1/tv/{media_id}")
+                    logger.info(f"TV show API response keys: {list(tv_details.keys())}")
+                    existing_seasons = []
+                    
+                    # Check if there are any seasons in the response
+                    if 'seasons' in tv_details:
+                        logger.info(f"Found {len(tv_details['seasons'])} seasons in TV details")
+                        for season in tv_details['seasons']:
+                            season_number = season.get('seasonNumber', 0)
+                            status = season.get('status')
+                            logger.info(f"Season {season_number}: status={status}, available={season.get('available', 'unknown')}")
+                            # Skip season 0 (specials) and check if season is requested or available
+                            if season_number > 0:
+                                # Check for any status that indicates the season exists/requested
+                                # Status 1 = UNKNOWN, 2 = PENDING, 3 = APPROVED, 4 = DECLINED, 5 = AVAILABLE
+                                # We want to include PENDING, APPROVED, and AVAILABLE
+                                # But let's also check if 'available' field is true
+                                is_available = season.get('available', False)
+                                if status in [2, 3, 5] or is_available:
+                                    existing_seasons.append(season_number)
+                    
+                    logger.info(f"Found existing seasons for media ID {media_id}: {existing_seasons}")
+                    return sorted(existing_seasons)
                 return []
             
-            tv_details = response.json()
-            existing_seasons = []
-            
-            # Check if there are any seasons in the response
-            if 'seasons' in tv_details:
-                for season in tv_details['seasons']:
-                    season_number = season.get('seasonNumber', 0)
-                    # Skip season 0 (specials) and check if season is requested or available
-                    if season_number > 0:
-                        status = season.get('status')
-                        # Status 2 = PENDING, 3 = APPROVED, 4 = DECLINED, 5 = AVAILABLE
-                        if status in [2, 3, 5]:  # PENDING, APPROVED, or AVAILABLE
-                            existing_seasons.append(season_number)
-            
-            logger.debug(f"Found existing seasons for media ID {media_id}: {existing_seasons}")
-            return sorted(existing_seasons)
-            
         except Exception as e:
-            logger.debug(f"Error checking existing requests for media ID {media_id}: {str(e)}")
+            logger.info(f"Error checking existing requests for media ID {media_id}: {str(e)}")
             return []
+
+    def _extract_seasons_from_media(self, media_details):
+        """Extract existing seasons from media API response."""
+        existing_seasons = []
+        logger.info(f"Media API response keys: {list(media_details.keys())}")
+        
+        # Check different possible locations for season information
+        if 'seasons' in media_details:
+            logger.info(f"Found {len(media_details['seasons'])} seasons in media details")
+            for season in media_details['seasons']:
+                season_number = season.get('seasonNumber', 0)
+                status = season.get('status')
+                is_available = season.get('available', False)
+                logger.info(f"Media Season {season_number}: status={status}, available={is_available}")
+                if season_number > 0 and (status in [2, 3, 5] or is_available):
+                    existing_seasons.append(season_number)
+        
+        # Check if there's a requests array - this is where actual request status lives
+        if 'requests' in media_details:
+            logger.info(f"Found {len(media_details['requests'])} requests in media details")
+            for request in media_details['requests']:
+                request_status = request.get('status')
+                logger.info(f"Request status: {request_status}")
+                if 'seasons' in request:
+                    logger.info(f"Request has {len(request['seasons'])} seasons")
+                    for season in request['seasons']:
+                        season_number = season.get('seasonNumber', 0)
+                        status = season.get('status')
+                        is_available = season.get('available', False)
+                        logger.info(f"Request Season {season_number}: status={status}, available={is_available}")
+                        if season_number > 0 and (status in [2, 3, 5] or is_available):
+                            existing_seasons.append(season_number)
+                else:
+                    # If no seasons specified in request, might be a "all seasons" request
+                    logger.info(f"Request has no seasons array - might be requesting all seasons")
+        
+        # Also check for mediaInfo which might have download status
+        if 'mediaInfo' in media_details:
+            logger.info(f"Found mediaInfo in response")
+            media_info = media_details['mediaInfo']
+            if media_info and 'seasons' in media_info:
+                logger.info(f"Found {len(media_info['seasons'])} seasons in mediaInfo")
+                for season in media_info['seasons']:
+                    season_number = season.get('seasonNumber', 0)
+                    status = season.get('status')
+                    is_available = season.get('available', False)
+                    logger.info(f"MediaInfo Season {season_number}: status={status}, available={is_available}")
+                    if season_number > 0 and (status in [2, 3, 5] or is_available):
+                        existing_seasons.append(season_number)
+        
+        logger.info(f"Found existing seasons from media API: {sorted(list(set(existing_seasons)))}")
+        return sorted(list(set(existing_seasons)))  # Remove duplicates
+
+    def _extract_seasons_from_requests(self, requests_data, media_id):
+        """Extract existing seasons from requests API response."""
+        existing_seasons = []
+        
+        if 'results' in requests_data:
+            logger.info(f"Found {len(requests_data['results'])} total requests")
+            for request in requests_data['results']:
+                # Check if this request is for our media ID
+                if request.get('media', {}).get('tmdbId') == media_id:
+                    request_status = request.get('status')
+                    request_type = request.get('type')
+                    logger.info(f"Found request for media {media_id}: status={request_status}, type={request_type}")
+                    
+                    # Only include approved/available requests
+                    if request_status in [2, 3, 5]:  # PENDING, APPROVED, AVAILABLE
+                        if 'seasons' in request and request['seasons']:
+                            logger.info(f"Request has {len(request['seasons'])} specific seasons")
+                            for season in request['seasons']:
+                                season_number = season.get('seasonNumber', 0)
+                                if season_number > 0:
+                                    existing_seasons.append(season_number)
+                                    logger.info(f"Found requested season: {season_number}")
+                        else:
+                            # If no specific seasons, might be requesting all seasons
+                            logger.info(f"Request has no specific seasons - might be requesting all available")
+        
+        return sorted(list(set(existing_seasons)))
 
     def request_tv_show_seasons(self, title, max_season):
         """Request TV show seasons from 1 up to max_season.
@@ -335,7 +442,8 @@ class NetflixOverseerrBridge:
                         else:
                             return {'status': 'new_request', 'message': f'Successfully requested seasons {requested_seasons}'}
                     else:
-                        return {'status': 'existing_request', 'message': f'All seasons already available or requested (existing: {existing_seasons})'}
+                        # All seasons were already available - this is the correct behavior
+                        return {'status': 'existing_request', 'message': f'All seasons already available or requested'}
                 else:
                     logger.warning(f"Failed to request {title}: {request_response.status_code} - {error_msg}")
                     return {'status': 'error', 'message': f'Request failed: {error_msg}'}
