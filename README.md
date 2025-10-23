@@ -67,11 +67,10 @@ docker run -d \
 
 The `NETFLIX_COUNTRY` environment variable allows you to specify which country's Netflix top 10 list to sync. The country name must match exactly as it appears in Netflix's data. When you run the script, it will log the available countries in the Netflix data.
 
-In docker-compose.yml, use double quotes for better readability (they will be stripped by Docker):
 ```yaml
 environment:
-  - NETFLIX_COUNTRY="United Kingdom"  # Using quotes for better UX
-  - NETFLIX_COUNTRY="Japan"  # Using quotes for better UX
+  - NETFLIX_COUNTRY="United Kingdom" 
+  - NETFLIX_COUNTRY="Japan"  
 ```
 
 When running manually from the command line, any type of quotes will work:
