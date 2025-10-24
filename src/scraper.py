@@ -749,6 +749,7 @@ class NetflixOverseerrBridge:
 
             # Process TV shows - get TVDb IDs instead of TMDb IDs for better Plex matching
             tv_tvdb_ids = []
+            tv_tmdb_fallback_ids = []  # Fallback to TMDb IDs if TVDb IDs not available
             if summary.get('top_shows'):
                 logger.info("Collecting TVDb IDs for TV shows...")
                 for show in summary['top_shows']:
@@ -767,6 +768,8 @@ class NetflixOverseerrBridge:
                                 logger.info(f"Found TVDb ID {tvdb_id} for TV show: {title}")
                             else:
                                 logger.warning(f"Could not find TVDb ID for TV show: {title} (TMDb ID: {tmdb_id})")
+                                # Add to fallback list for TMDb builder
+                                tv_tmdb_fallback_ids.append(tmdb_id)
                         else:
                             logger.warning(f"Could not find TMDb ID for TV show: {title}")
                     except Exception as e:
@@ -817,14 +820,37 @@ class NetflixOverseerrBridge:
                 else:
                     logger.error(f"✗ Failed to create TV file: {tv_filepath}")
                     return
+            elif tv_tmdb_fallback_ids:
+                # Fallback to TMDb builder if no TVDb IDs found
+                logger.warning("No TVDb IDs found, using TMDb IDs as fallback")
+                tv_filename = f"netflix_tv_{country_safe}.yml"
+                tv_filepath = os.path.join(self.kometa_tv_dir, tv_filename)
+                tv_yaml = self._create_kometa_yaml(
+                    collection_name=f"Netflix Top 10 TV Shows - {self.country}",
+                    tmdb_ids=tv_tmdb_fallback_ids,
+                    builder_type="tmdb_show",  # Fallback to TMDb builder
+                    summary=f"Netflix Top 10 TV shows for {self.country} as of {datetime.now().strftime('%Y-%m-%d')} (TMDb fallback)"
+                )
+
+                with open(tv_filepath, 'w', encoding='utf-8') as f:
+                    yaml.dump(tv_yaml, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+                # Verify file was actually created and has content
+                if os.path.exists(tv_filepath):
+                    file_size = os.path.getsize(tv_filepath)
+                    logger.info(f"✓ Generated Kometa TV file (TMDb fallback): {tv_filepath} with {len(tv_tmdb_fallback_ids)} shows ({file_size} bytes)")
+                else:
+                    logger.error(f"✗ Failed to create TV file: {tv_filepath}")
+                    return
             else:
-                logger.warning("No TV show TVDb IDs found, skipping TV YAML generation")
+                logger.warning("No TV show IDs found, skipping TV YAML generation")
 
             # Log summary
-            total_generated = (1 if movie_tmdb_ids else 0) + (1 if tv_tvdb_ids else 0)
+            tv_files_generated = 1 if (tv_tvdb_ids or tv_tmdb_fallback_ids) else 0
+            total_generated = (1 if movie_tmdb_ids else 0) + tv_files_generated
             if total_generated > 0:
                 movies_msg = f"Movies: {self.kometa_movies_dir}" if movie_tmdb_ids else ""
-                tv_msg = f"TV: {self.kometa_tv_dir}" if tv_tvdb_ids else ""
+                tv_msg = f"TV: {self.kometa_tv_dir}" if (tv_tvdb_ids or tv_tmdb_fallback_ids) else ""
                 dirs_msg = ", ".join(filter(None, [movies_msg, tv_msg]))
                 logger.info(f"✅ Successfully generated {total_generated} Kometa YAML file(s) - {dirs_msg}")
             else:
@@ -916,17 +942,19 @@ class NetflixOverseerrBridge:
             
             if response.status_code == 200:
                 media_details = response.json()
-                # TVDb ID is typically in the external_ids field
-                if 'external_ids' in media_details:
-                    tvdb_id = media_details['external_ids'].get('tvdb_id')
+                # TVDb ID is typically in the externalIds field (camelCase)
+                if 'externalIds' in media_details:
+                    external_ids = media_details['externalIds']
+                    logger.info(f"External IDs for TMDb ID {tmdb_id}: {external_ids}")
+                    tvdb_id = external_ids.get('tvdb_id')
                     if tvdb_id:
                         logger.info(f"Found TVDb ID {tvdb_id} for TMDb ID {tmdb_id}")
                         return tvdb_id
                     else:
-                        logger.warning(f"No TVDb ID found for TMDb ID {tmdb_id}")
+                        logger.warning(f"No TVDb ID found in externalIds for TMDb ID {tmdb_id}")
                         return None
                 else:
-                    logger.warning(f"No external_ids found for TMDb ID {tmdb_id}")
+                    logger.warning(f"No externalIds found for TMDb ID {tmdb_id}")
                     return None
             else:
                 logger.warning(f"Failed to get media details for TMDb ID {tmdb_id}: {response.status_code}")
