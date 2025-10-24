@@ -898,7 +898,6 @@ class NetflixOverseerrBridge:
                 collection_name: {
                     builder_type: tmdb_ids,
                     'sync_mode': 'sync',
-                    'collection_order': 'custom',
                     'sort_title': f"!Netflix {collection_name}",
                     'summary': summary,
                     'collection_mode': 'default',

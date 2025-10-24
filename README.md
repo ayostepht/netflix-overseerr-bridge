@@ -141,7 +141,6 @@ collections:
     - 293660
     # ... more TMDb IDs
     sync_mode: sync
-    collection_order: custom
     sort_title: '!Netflix Netflix Top 10 Movies - United States'
     summary: Netflix Top 10 movies for United States as of 2025-10-23
     collection_mode: default
