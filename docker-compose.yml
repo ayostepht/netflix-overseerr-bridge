@@ -8,13 +8,12 @@ services:
       - RUN_FREQUENCY=24  # Default to 24 hours if not set
       - NETFLIX_COUNTRY="United States"
       - DRY_RUN=false  # Optional: Enable dry run mode, defaults to false
-      - KOMETA_ENABLED=false  # Optional: Enable Kometa YAML generation, defaults to false
-      - KOMETA_OUTPUT_DIR=/config/kometa  # Optional: Base directory for Kometa YAML files
-      - KOMETA_MOVIES_DIR=/config/kometa/movies  # Optional: Specific directory for movie collections
-      - KOMETA_TV_DIR=/config/kometa/tv  # Optional: Specific directory for TV collections
-    # Optional: Uncomment volumes section below if using Kometa integration
-    # volumes:
-    #   - ./kometa:/config/kometa
+      - KOMETA_ENABLED=true  # Enable Kometa YAML generation with TVDb builder
+      - KOMETA_OUTPUT_DIR=/config/kometa  # Base directory for Kometa YAML files
+      - KOMETA_MOVIES_DIR=/config/kometa/movies  # Specific directory for movie collections
+      - KOMETA_TV_DIR=/config/kometa/tv  # Specific directory for TV collections
+    volumes:
+      - ./kometa:/config/kometa  # Mount directory for YAML files
     logging:
       driver: "json-file"
       options:
