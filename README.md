@@ -88,7 +88,7 @@ The bridge can automatically generate Kometa YAML files for creating Netflix Top
 
 - **Automated Collection Management**: Keep your Netflix Top 10 collections automatically updated
 - **Country-Specific Collections**: Generate separate collections for different Netflix regions
-- **TMDb Accuracy**: Uses TMDb IDs for precise media matching
+- **TMDb/TVDb Accuracy**: Uses TMDb IDs for movies and TVDb IDs for TV shows for precise media matching
 - **Zero Maintenance**: Collections update automatically with fresh Netflix data
 - **Library Organization**: Places Netflix collections at the top of your library for easy access
 
@@ -120,8 +120,17 @@ services:
 
 When enabled, the bridge generates two YAML files per country:
 
-- `netflix_movies_{country}.yml` - Contains TMDb IDs for top 10 movies
-- `netflix_tv_{country}.yml` - Contains TMDb IDs for top 10 TV shows
+- `netflix_movies_{country}.yml` - Contains TMDb IDs for top 10 movies (uses `tmdb_movie` builder)
+- `netflix_tv_{country}.yml` - Contains TVDb IDs for top 10 TV shows (uses `tvdb_show` builder for better Plex matching)
+
+#### TVDb Builder for Better Plex Matching
+
+The bridge now uses the **TVDb builder** (`tvdb_show`) instead of the TMDb builder (`tmdb_show`) for TV shows. This change provides several benefits:
+
+- **Better Plex Compatibility**: Plex primarily uses TVDb for TV show metadata, ensuring more accurate matching
+- **Eliminates Conversion Warnings**: No more "Convert Warning: No TVDb ID Found for TMDb ID" messages in Kometa logs
+- **Improved Collection Accuracy**: TV shows are more likely to be found and matched correctly in your Plex library
+- **Automatic ID Resolution**: The bridge automatically converts TMDb IDs to TVDb IDs using Overseerr's API
 
 For example, with `NETFLIX_COUNTRY="United States"`, these files will be generated:
 
@@ -144,12 +153,23 @@ collections:
     sort_title: '!Netflix Netflix Top 10 Movies - United States'
     summary: Netflix Top 10 movies for United States as of 2025-10-23
     collection_mode: default
+
+  Netflix Top 10 TV Shows - United States:
+    tvdb_show:  # Uses TVDb IDs for better Plex matching
+    - 123456
+    - 789012
+    - 345678
+    # ... more TVDb IDs
+    sync_mode: sync
+    sort_title: '!Netflix Netflix Top 10 TV Shows - United States'
+    summary: Netflix Top 10 TV shows for United States as of 2025-10-23
+    collection_mode: default
 ```
 
 ### Key Features
 
 - **Country-Specific Files**: Separate files for each country's Netflix data
-- **TMDb Integration**: Uses TMDb IDs for accurate media matching
+- **TMDb/TVDb Integration**: Uses TMDb IDs for movies and TVDb IDs for TV shows for accurate media matching
 - **Sync Mode**: Collections replace entirely on each update (sync_mode: sync)
 - **Custom Sort**: Collections appear at the top of your library (!Netflix prefix)
 - **Error Handling**: Continues processing even if some titles can't be matched

@@ -747,22 +747,30 @@ class NetflixOverseerrBridge:
                     except Exception as e:
                         logger.error(f"Error getting TMDb ID for movie {movie}: {str(e)}")
 
-            # Process TV shows
-            tv_tmdb_ids = []
+            # Process TV shows - get TVDb IDs instead of TMDb IDs for better Plex matching
+            tv_tvdb_ids = []
             if summary.get('top_shows'):
-                logger.info("Collecting TMDb IDs for TV shows...")
+                logger.info("Collecting TVDb IDs for TV shows...")
                 for show in summary['top_shows']:
                     try:
                         title = show['title'] if isinstance(show, dict) else show
-                        # Search for the TV show to get its TMDb ID
-                        result = self._get_tmdb_id_for_title(title, 'tv')
-                        if result and result.get('tmdb_id'):
-                            tv_tmdb_ids.append(result['tmdb_id'])
-                            logger.info(f"Found TMDb ID {result['tmdb_id']} for TV show: {title}")
+                        # First get TMDb ID
+                        tmdb_result = self._get_tmdb_id_for_title(title, 'tv')
+                        if tmdb_result and tmdb_result.get('tmdb_id'):
+                            tmdb_id = tmdb_result['tmdb_id']
+                            logger.info(f"Found TMDb ID {tmdb_id} for TV show: {title}")
+                            
+                            # Then get TVDb ID from TMDb ID
+                            tvdb_id = self._get_tvdb_id_for_tmdb_id(tmdb_id, 'tv')
+                            if tvdb_id:
+                                tv_tvdb_ids.append(tvdb_id)
+                                logger.info(f"Found TVDb ID {tvdb_id} for TV show: {title}")
+                            else:
+                                logger.warning(f"Could not find TVDb ID for TV show: {title} (TMDb ID: {tmdb_id})")
                         else:
                             logger.warning(f"Could not find TMDb ID for TV show: {title}")
                     except Exception as e:
-                        logger.error(f"Error getting TMDb ID for TV show {title}: {str(e)}")
+                        logger.error(f"Error getting TVDb ID for TV show {title}: {str(e)}")
 
             # Generate movie YAML file
             if movie_tmdb_ids:
@@ -788,14 +796,14 @@ class NetflixOverseerrBridge:
             else:
                 logger.warning("No movie TMDb IDs found, skipping movie YAML generation")
 
-            # Generate TV show YAML file
-            if tv_tmdb_ids:
+            # Generate TV show YAML file using TVDb IDs for better Plex matching
+            if tv_tvdb_ids:
                 tv_filename = f"netflix_tv_{country_safe}.yml"
                 tv_filepath = os.path.join(self.kometa_tv_dir, tv_filename)
                 tv_yaml = self._create_kometa_yaml(
                     collection_name=f"Netflix Top 10 TV Shows - {self.country}",
-                    tmdb_ids=tv_tmdb_ids,
-                    builder_type="tmdb_show",
+                    tmdb_ids=tv_tvdb_ids,  # Note: parameter name is still tmdb_ids but now contains TVDb IDs
+                    builder_type="tvdb_show",  # Changed from tmdb_show to tvdb_show
                     summary=f"Netflix Top 10 TV shows for {self.country} as of {datetime.now().strftime('%Y-%m-%d')}"
                 )
 
@@ -805,22 +813,22 @@ class NetflixOverseerrBridge:
                 # Verify file was actually created and has content
                 if os.path.exists(tv_filepath):
                     file_size = os.path.getsize(tv_filepath)
-                    logger.info(f"✓ Generated Kometa TV file: {tv_filepath} with {len(tv_tmdb_ids)} shows ({file_size} bytes)")
+                    logger.info(f"✓ Generated Kometa TV file: {tv_filepath} with {len(tv_tvdb_ids)} shows ({file_size} bytes)")
                 else:
                     logger.error(f"✗ Failed to create TV file: {tv_filepath}")
                     return
             else:
-                logger.warning("No TV show TMDb IDs found, skipping TV YAML generation")
+                logger.warning("No TV show TVDb IDs found, skipping TV YAML generation")
 
             # Log summary
-            total_generated = (1 if movie_tmdb_ids else 0) + (1 if tv_tmdb_ids else 0)
+            total_generated = (1 if movie_tmdb_ids else 0) + (1 if tv_tvdb_ids else 0)
             if total_generated > 0:
                 movies_msg = f"Movies: {self.kometa_movies_dir}" if movie_tmdb_ids else ""
-                tv_msg = f"TV: {self.kometa_tv_dir}" if tv_tmdb_ids else ""
+                tv_msg = f"TV: {self.kometa_tv_dir}" if tv_tvdb_ids else ""
                 dirs_msg = ", ".join(filter(None, [movies_msg, tv_msg]))
                 logger.info(f"✅ Successfully generated {total_generated} Kometa YAML file(s) - {dirs_msg}")
             else:
-                logger.warning("No Kometa YAML files were generated due to missing TMDb IDs")
+                logger.warning("No Kometa YAML files were generated due to missing IDs")
 
         except Exception as e:
             logger.error(f"Error generating Kometa files: {str(e)}")
@@ -878,6 +886,54 @@ class NetflixOverseerrBridge:
 
         except Exception as e:
             logger.error(f"Error searching for {title}: {str(e)}")
+            return None
+
+    def _get_tvdb_id_for_tmdb_id(self, tmdb_id, media_type):
+        """
+        Get TVDb ID for a TMDb ID by querying Overseerr's media details.
+
+        Args:
+            tmdb_id (int): TMDb ID
+            media_type (str): 'movie' or 'tv'
+
+        Returns:
+            int or None: TVDb ID if found, None otherwise
+        """
+        try:
+            if media_type == 'tv':
+                # For TV shows, get details from the TV endpoint
+                media_url = f"{self.overseerr_url}/api/v1/tv/{tmdb_id}"
+            else:
+                # For movies, get details from the movie endpoint
+                media_url = f"{self.overseerr_url}/api/v1/movie/{tmdb_id}"
+            
+            headers = {
+                'X-Api-Key': self.overseerr_api_key,
+                'Accept': 'application/json'
+            }
+            
+            response = self.session.get(media_url, headers=headers)
+            
+            if response.status_code == 200:
+                media_details = response.json()
+                # TVDb ID is typically in the external_ids field
+                if 'external_ids' in media_details:
+                    tvdb_id = media_details['external_ids'].get('tvdb_id')
+                    if tvdb_id:
+                        logger.info(f"Found TVDb ID {tvdb_id} for TMDb ID {tmdb_id}")
+                        return tvdb_id
+                    else:
+                        logger.warning(f"No TVDb ID found for TMDb ID {tmdb_id}")
+                        return None
+                else:
+                    logger.warning(f"No external_ids found for TMDb ID {tmdb_id}")
+                    return None
+            else:
+                logger.warning(f"Failed to get media details for TMDb ID {tmdb_id}: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error getting TVDb ID for TMDb ID {tmdb_id}: {str(e)}")
             return None
 
     def _create_kometa_yaml(self, collection_name, tmdb_ids, builder_type, summary):
