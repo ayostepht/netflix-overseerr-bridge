@@ -901,7 +901,9 @@ class NetflixOverseerrBridge:
                     'collection_order': 'custom',
                     'sort_title': f"!Netflix {collection_name}",
                     'summary': summary,
-                    'collection_mode': 'default'
+                    'collection_mode': 'default',
+                    'visible_home': True,
+                    'visible_shared': True
                 }
             }
         }
