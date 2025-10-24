@@ -10,6 +10,7 @@ import sys
 import argparse
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import yaml
 
 # Configure logging
 logging.basicConfig(
@@ -29,12 +30,19 @@ class NetflixOverseerrBridge:
         country = os.getenv('NETFLIX_COUNTRY', 'United States')  # Default to United States
         # Strip any quotes from the country name
         self.country = country.strip('"\'')
-        
+
+        # Kometa configuration
+        self.kometa_enabled = os.getenv('KOMETA_ENABLED', 'false').lower() in ('true', '1', 'yes')
+        self.kometa_output_dir = os.getenv('KOMETA_OUTPUT_DIR', '/config/kometa')
+
         # Log environment variables for debugging
         logger.info(f"Environment variables:")
         logger.info(f"OVERSEERR_URL: {self.overseerr_url}")
         logger.info(f"NETFLIX_COUNTRY: {self.country}")
         logger.info(f"DRY_RUN: {os.getenv('DRY_RUN', 'not set')}")
+        logger.info(f"KOMETA_ENABLED: {self.kometa_enabled}")
+        if self.kometa_enabled:
+            logger.info(f"KOMETA_OUTPUT_DIR: {self.kometa_output_dir}")
         
         if not self.overseerr_url or not self.overseerr_api_key:
             logger.error("Missing required environment variables!")
@@ -371,7 +379,7 @@ class NetflixOverseerrBridge:
             
             if not seasons_to_request:
                 logger.info(f"All seasons 1-{max_season} of {title} are already requested or available")
-                return {'status': 'existing_request', 'message': f'All seasons 1-{max_season} already available or requested'}
+                return {'status': 'existing_request', 'message': f'All seasons 1-{max_season} already available or requested', 'tmdb_id': media_id}
             
             if existing_seasons:
                 logger.info(f"{title}: Existing seasons {existing_seasons}, will request missing seasons {seasons_to_request}")
@@ -391,7 +399,7 @@ class NetflixOverseerrBridge:
                     logger.info(f"[DRY RUN] {title}: Found existing seasons {existing_seasons}, would request missing seasons {seasons_to_request}")
                 else:
                     logger.info(f"[DRY RUN] {title}: No existing seasons found, would request seasons {seasons_to_request}")
-                return {'status': 'dry_run', 'message': f'Dry run - would request seasons {seasons_to_request}'}
+                return {'status': 'dry_run', 'message': f'Dry run - would request seasons {seasons_to_request}', 'tmdb_id': media_id}
             
             request_response = self.session.post(
                 request_url,
@@ -402,12 +410,12 @@ class NetflixOverseerrBridge:
             if request_response.status_code == 201:
                 logger.info(f"Successfully requested {title} seasons {seasons_to_request}")
                 if existing_seasons:
-                    return {'status': 'new_request', 'message': f'Successfully requested missing seasons {seasons_to_request} (existing: {existing_seasons})'}
+                    return {'status': 'new_request', 'message': f'Successfully requested missing seasons {seasons_to_request} (existing: {existing_seasons})', 'tmdb_id': media_id}
                 else:
-                    return {'status': 'new_request', 'message': f'Successfully requested seasons {seasons_to_request}'}
+                    return {'status': 'new_request', 'message': f'Successfully requested seasons {seasons_to_request}', 'tmdb_id': media_id}
             elif request_response.status_code == 409:
                 logger.info(f"Request for {title} seasons {seasons_to_request} already exists")
-                return {'status': 'existing_request', 'message': f'Request already exists (existing: {existing_seasons})'}
+                return {'status': 'existing_request', 'message': f'Request already exists (existing: {existing_seasons})', 'tmdb_id': media_id}
             else:
                 error_msg = request_response.json().get('message', 'Unknown error')
                 
@@ -438,12 +446,12 @@ class NetflixOverseerrBridge:
                     
                     if requested_seasons:
                         if existing_seasons:
-                            return {'status': 'new_request', 'message': f'Successfully requested missing seasons {requested_seasons} (existing: {existing_seasons})'}
+                            return {'status': 'new_request', 'message': f'Successfully requested missing seasons {requested_seasons} (existing: {existing_seasons})', 'tmdb_id': media_id}
                         else:
-                            return {'status': 'new_request', 'message': f'Successfully requested seasons {requested_seasons}'}
+                            return {'status': 'new_request', 'message': f'Successfully requested seasons {requested_seasons}', 'tmdb_id': media_id}
                     else:
                         # All seasons were already available - this is the correct behavior
-                        return {'status': 'existing_request', 'message': f'All seasons already available or requested'}
+                        return {'status': 'existing_request', 'message': f'All seasons already available or requested', 'tmdb_id': media_id}
                 else:
                     logger.warning(f"Failed to request {title}: {request_response.status_code} - {error_msg}")
                     return {'status': 'error', 'message': f'Request failed: {error_msg}'}
@@ -518,7 +526,7 @@ class NetflixOverseerrBridge:
                 
                 if self.dry_run:
                     logger.info(f"[DRY RUN] Would request {title} ({media_type}) with ID {media_id}")
-                    return {'status': 'dry_run', 'message': 'Dry run - would request'}
+                    return {'status': 'dry_run', 'message': 'Dry run - would request', 'tmdb_id': media_id}
                 
                 request_response = self.session.post(
                     request_url,
@@ -565,10 +573,10 @@ class NetflixOverseerrBridge:
                 
                 if request_response.status_code == 201:
                     logger.info(f"Successfully requested {title}")
-                    return {'status': 'new_request', 'message': 'Successfully requested'}
+                    return {'status': 'new_request', 'message': 'Successfully requested', 'tmdb_id': media_id}
                 elif request_response.status_code == 409:
                     logger.info(f"Request for {title} already exists")
-                    return {'status': 'existing_request', 'message': 'Request already exists'}
+                    return {'status': 'existing_request', 'message': 'Request already exists', 'tmdb_id': media_id}
                 else:
                     error_msg = request_response.json().get('message', 'Unknown error')
                     if 'Failed to fetch movie details' in error_msg:
@@ -585,7 +593,7 @@ class NetflixOverseerrBridge:
                         return {'status': 'not_found', 'message': 'TV show not found in Overseerr database'}
                     elif 'No seasons available to request' in error_msg:
                         logger.info(f"Season 1 of {title} is already available or requested")
-                        return {'status': 'existing_request', 'message': 'Season already available or requested'}
+                        return {'status': 'existing_request', 'message': 'Season already available or requested', 'tmdb_id': media_id}
                     else:
                         logger.warning(f"Failed to request {title}: {request_response.status_code} - {error_msg}")
                         return {'status': 'error', 'message': f'Request failed: {error_msg}'}
@@ -595,6 +603,200 @@ class NetflixOverseerrBridge:
         except Exception as e:
             logger.error(f"Error requesting {title} in Overseerr: {str(e)}")
             return {'status': 'error', 'message': f'Exception: {str(e)}'}
+
+    def _sanitize_filename(self, country):
+        """
+        Sanitize country name for use in filenames.
+
+        Args:
+            country (str): Country name
+
+        Returns:
+            str: Sanitized filename safe country name
+        """
+        # Convert to lowercase and replace spaces and special characters with underscores
+        import re
+        sanitized = re.sub(r'[^\w\s-]', '', country.lower())
+        sanitized = re.sub(r'[-\s]+', '_', sanitized)
+        return sanitized.strip('_')
+
+    def generate_kometa_files(self, summary):
+        """
+        Generate Kometa YAML files for Netflix Top 10 collections.
+
+        Args:
+            summary (dict): Summary data containing TMDb IDs and titles
+        """
+        if not self.kometa_enabled:
+            logger.info("Kometa generation disabled, skipping YAML file creation")
+            return
+
+        try:
+            # Create output directory if it doesn't exist
+            os.makedirs(self.kometa_output_dir, exist_ok=True)
+
+            # Sanitize country name for filename
+            country_safe = self._sanitize_filename(self.country)
+
+            # Process movies
+            movie_tmdb_ids = []
+            if summary.get('top_movies'):
+                logger.info("Collecting TMDb IDs for movies...")
+                for movie in summary['top_movies']:
+                    try:
+                        # Search for the movie to get its TMDb ID
+                        result = self._get_tmdb_id_for_title(movie, 'movie')
+                        if result and result.get('tmdb_id'):
+                            movie_tmdb_ids.append(result['tmdb_id'])
+                            logger.info(f"Found TMDb ID {result['tmdb_id']} for movie: {movie}")
+                        else:
+                            logger.warning(f"Could not find TMDb ID for movie: {movie}")
+                    except Exception as e:
+                        logger.error(f"Error getting TMDb ID for movie {movie}: {str(e)}")
+
+            # Process TV shows
+            tv_tmdb_ids = []
+            if summary.get('top_shows'):
+                logger.info("Collecting TMDb IDs for TV shows...")
+                for show in summary['top_shows']:
+                    try:
+                        title = show['title'] if isinstance(show, dict) else show
+                        # Search for the TV show to get its TMDb ID
+                        result = self._get_tmdb_id_for_title(title, 'tv')
+                        if result and result.get('tmdb_id'):
+                            tv_tmdb_ids.append(result['tmdb_id'])
+                            logger.info(f"Found TMDb ID {result['tmdb_id']} for TV show: {title}")
+                        else:
+                            logger.warning(f"Could not find TMDb ID for TV show: {title}")
+                    except Exception as e:
+                        logger.error(f"Error getting TMDb ID for TV show {title}: {str(e)}")
+
+            # Generate movie YAML file
+            if movie_tmdb_ids:
+                movie_filename = f"netflix_movies_{country_safe}.yml"
+                movie_filepath = os.path.join(self.kometa_output_dir, movie_filename)
+                movie_yaml = self._create_kometa_yaml(
+                    collection_name=f"Netflix Top 10 Movies - {self.country}",
+                    tmdb_ids=movie_tmdb_ids,
+                    builder_type="tmdb_movie",
+                    summary=f"Netflix Top 10 movies for {self.country} as of {datetime.now().strftime('%Y-%m-%d')}"
+                )
+
+                with open(movie_filepath, 'w', encoding='utf-8') as f:
+                    yaml.dump(movie_yaml, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+                logger.info(f"Generated Kometa movie file: {movie_filepath} with {len(movie_tmdb_ids)} movies")
+            else:
+                logger.warning("No movie TMDb IDs found, skipping movie YAML generation")
+
+            # Generate TV show YAML file
+            if tv_tmdb_ids:
+                tv_filename = f"netflix_tv_{country_safe}.yml"
+                tv_filepath = os.path.join(self.kometa_output_dir, tv_filename)
+                tv_yaml = self._create_kometa_yaml(
+                    collection_name=f"Netflix Top 10 TV Shows - {self.country}",
+                    tmdb_ids=tv_tmdb_ids,
+                    builder_type="tmdb_show",
+                    summary=f"Netflix Top 10 TV shows for {self.country} as of {datetime.now().strftime('%Y-%m-%d')}"
+                )
+
+                with open(tv_filepath, 'w', encoding='utf-8') as f:
+                    yaml.dump(tv_yaml, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+                logger.info(f"Generated Kometa TV file: {tv_filepath} with {len(tv_tmdb_ids)} shows")
+            else:
+                logger.warning("No TV show TMDb IDs found, skipping TV YAML generation")
+
+            # Log summary
+            total_generated = (1 if movie_tmdb_ids else 0) + (1 if tv_tmdb_ids else 0)
+            if total_generated > 0:
+                logger.info(f"Successfully generated {total_generated} Kometa YAML file(s) in {self.kometa_output_dir}")
+            else:
+                logger.warning("No Kometa YAML files were generated due to missing TMDb IDs")
+
+        except Exception as e:
+            logger.error(f"Error generating Kometa files: {str(e)}")
+
+    def _get_tmdb_id_for_title(self, title, media_type):
+        """
+        Get TMDb ID for a title by searching Overseerr.
+
+        Args:
+            title (str): Title to search for
+            media_type (str): 'movie' or 'tv'
+
+        Returns:
+            dict: Result with tmdb_id if found
+        """
+        try:
+            search_url = f"{self.overseerr_url}/api/v1/search"
+            search_params = {
+                'query': quote(title),
+                'page': 1
+            }
+            search_headers = {
+                'X-Api-Key': self.overseerr_api_key,
+                'Accept': 'application/json'
+            }
+
+            search_response = self.session.get(
+                search_url,
+                params=search_params,
+                headers=search_headers
+            )
+
+            if search_response.status_code == 200:
+                search_results = search_response.json()
+                if not search_results.get('results'):
+                    return None
+
+                # Filter by media type and find best match
+                results = [r for r in search_results['results'] if r.get('mediaType') == media_type]
+                if not results:
+                    return None
+
+                # Find exact title match or use first result
+                exact_matches = [r for r in results if r.get('title', r.get('name', '')).lower() == title.lower()]
+                if exact_matches:
+                    exact_matches.sort(key=lambda x: x.get('releaseDate', '') or x.get('firstAirDate', ''), reverse=True)
+                    media_item = exact_matches[0]
+                else:
+                    results.sort(key=lambda x: x.get('releaseDate', '') or x.get('firstAirDate', ''), reverse=True)
+                    media_item = results[0]
+
+                return {'tmdb_id': media_item['id']}
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error searching for {title}: {str(e)}")
+            return None
+
+    def _create_kometa_yaml(self, collection_name, tmdb_ids, builder_type, summary):
+        """
+        Create Kometa YAML structure for a collection.
+
+        Args:
+            collection_name (str): Name of the collection
+            tmdb_ids (list): List of TMDb IDs
+            builder_type (str): Type of builder ('tmdb_movie' or 'tmdb_show')
+            summary (str): Collection summary description
+
+        Returns:
+            dict: YAML structure for Kometa
+        """
+        return {
+            'collections': {
+                collection_name: {
+                    builder_type: tmdb_ids,
+                    'sync_mode': 'sync',
+                    'collection_order': 'custom',
+                    'sort_title': f"!Netflix {collection_name}",
+                    'summary': summary,
+                    'collection_mode': 'default'
+                }
+            }
+        }
 
     def run(self, run_frequency_hours=None):
         while True:
@@ -663,6 +865,11 @@ class NetflixOverseerrBridge:
                     except Exception as e:
                         summary['errors'].append(f"Exception processing TV show {title}: {str(e)}")
                     time.sleep(1)  # Be nice to the API
+
+            # Generate Kometa files if enabled
+            if self.kometa_enabled:
+                logger.info("Generating Kometa YAML files...")
+                self.generate_kometa_files(summary)
 
             # Display summary
             self._display_summary(summary)

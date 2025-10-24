@@ -6,10 +6,13 @@ services:
       - OVERSEERR_URL=${OVERSEERR_URL}
       - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
       - RUN_FREQUENCY=24  # Default to 24 hours if not set
-      - NETFLIX_COUNTRY="United States"  
+      - NETFLIX_COUNTRY="United States"
       - DRY_RUN=false  # Optional: Enable dry run mode, defaults to false
-      - PYTHONUNBUFFERED=1
-      - PYTHONDONTWRITEBYTECODE=1
+      - KOMETA_ENABLED=false  # Optional: Enable Kometa YAML generation, defaults to false
+      - KOMETA_OUTPUT_DIR=/config/kometa  # Optional: Path to Kometa config directory
+    # Optional: Uncomment volumes section below if using Kometa integration
+    # volumes:
+    #   - ./kometa:/config/kometa
     logging:
       driver: "json-file"
       options:

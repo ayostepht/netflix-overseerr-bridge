@@ -17,6 +17,8 @@ The container requires the following environment variables:
 - `RUN_FREQUENCY`: (Optional) Run frequency in hours (e.g., 24 for daily, 168 for weekly)
 - `NETFLIX_COUNTRY`: (Optional) The country's Netflix top 10 list to sync (e.g., "United States", "United Kingdom", "Japan"). Defaults to "United States"
 - `DRY_RUN`: (Optional) Set to "true", "1", or "yes" to enable dry run mode. Defaults to false.
+- `KOMETA_ENABLED`: (Optional) Set to "true", "1", or "yes" to enable Kometa YAML file generation. Defaults to false.
+- `KOMETA_OUTPUT_DIR`: (Optional) Directory where Kometa YAML files will be saved. Defaults to "/config/kometa"
 
 ## Quick Start with Docker Compose
 
@@ -33,10 +35,15 @@ services:
       - RUN_FREQUENCY=24  # Optional: Set run frequency in hours (e.g., 24 for daily)
       - NETFLIX_COUNTRY='United States'  # Optional: Set country for Netflix top 10 list
       - DRY_RUN=false  # Optional: Enable dry run mode, defaults to false
+      - KOMETA_ENABLED=false  # Optional: Enable Kometa YAML file generation
+      - KOMETA_OUTPUT_DIR=/config/kometa  # Optional: Directory for Kometa YAML files
+    volumes:
+      - ./kometa:/config/kometa  # Optional: Mount directory for Kometa YAML files
     restart: unless-stopped
 ```
 
 2. Create a `.env` file in the same directory:
+
 ```bash
 OVERSEERR_URL=http://your-overseerr-url:5055
 OVERSEERR_API_KEY=your-api-key
@@ -44,6 +51,7 @@ RUN_FREQUENCY=24  # Optional: Set run frequency in hours
 ```
 
 3. Run the container:
+
 ```bash
 docker-compose up -d
 ```
@@ -69,11 +77,12 @@ The `NETFLIX_COUNTRY` environment variable allows you to specify which country's
 
 ```yaml
 environment:
-  - NETFLIX_COUNTRY="United Kingdom" 
-  - NETFLIX_COUNTRY="Japan"  
+  - NETFLIX_COUNTRY="United Kingdom"
+  - NETFLIX_COUNTRY="Japan"
 ```
 
 When running manually from the command line, any type of quotes will work:
+
 ```bash
 # All of these work:
 python src/scraper.py --country "United Kingdom"
@@ -82,6 +91,7 @@ python src/scraper.py --country United\ Kingdom
 ```
 
 Common country values (exact names from Netflix data):
+
 - "United States"
 - "United Kingdom"
 - "Japan"
@@ -143,11 +153,11 @@ docker run -d \
 ```
 
 Common frequency values:
+
 - 24: Daily
 - 168: Weekly
 - 720: Monthly (30 days)
 - 8760: Yearly
-
 
 ## Dry Run Mode
 
@@ -166,10 +176,170 @@ docker run --rm \
 ```
 
 In dry run mode, the script will:
+
 - Fetch the Netflix top 10 list as normal
 - Search for titles in Overseerr
 - Log what would be requested without making actual requests
 - Show the TMDB IDs that would be used for each request
+
+## Kometa YAML Generation
+
+The bridge can automatically generate Kometa YAML files for creating Netflix Top 10 collections in your media library. This optional feature (disabled by default) creates country-specific collection files that Kometa can use to build dynamic collections.
+
+### Benefits
+
+- **Automated Collection Management**: Keep your Netflix Top 10 collections automatically updated
+- **Country-Specific Collections**: Generate separate collections for different Netflix regions
+- **TMDb Accuracy**: Uses TMDb IDs for precise media matching
+- **Zero Maintenance**: Collections update automatically with fresh Netflix data
+- **Library Organization**: Places Netflix collections at the top of your library for easy access
+
+### Enabling Kometa Generation
+
+Kometa YAML file generation is **disabled by default**. To enable it, set the `KOMETA_ENABLED` environment variable to `true` and configure the output directory:
+
+```yaml
+services:
+  netflix-overseerr-bridge:
+    container_name: netflix-overseerr-bridge
+    image: stephtanner1/netflix-overseerr-bridge:latest
+    environment:
+      - OVERSEERR_URL=${OVERSEERR_URL}
+      - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
+      - KOMETA_ENABLED=true                    # Enable Kometa YAML generation
+      - KOMETA_OUTPUT_DIR=/config/kometa       # Output directory (default)
+      - NETFLIX_COUNTRY="United States"        # Country for collections
+    volumes:
+      - ./kometa:/config/kometa                # Mount directory for YAML files
+    restart: unless-stopped
+```
+
+**Important**: The volume mount (`./kometa:/config/kometa`) is required when Kometa generation is enabled. This maps a local directory to the container's output directory.
+
+### Generated Files
+
+When enabled, the bridge generates two YAML files per country:
+
+- `netflix_movies_{country}.yml` - Contains TMDb IDs for top 10 movies
+- `netflix_tv_{country}.yml` - Contains TMDb IDs for top 10 TV shows
+
+For example, with `NETFLIX_COUNTRY="United States"`, these files will be generated:
+
+- `netflix_movies_united_states.yml`
+- `netflix_tv_united_states.yml`
+
+### YAML File Structure
+
+Each generated file contains a Kometa collection configuration:
+
+```yaml
+collections:
+  Netflix Top 10 Movies - United States:
+    tmdb_movie:
+    - 550
+    - 27205
+    - 293660
+    # ... more TMDb IDs
+    sync_mode: sync
+    collection_order: custom
+    sort_title: '!Netflix Netflix Top 10 Movies - United States'
+    summary: Netflix Top 10 movies for United States as of 2025-10-23
+    collection_mode: default
+```
+
+### Key Features
+
+- **Country-Specific Files**: Separate files for each country's Netflix data
+- **TMDb Integration**: Uses TMDb IDs for accurate media matching
+- **Sync Mode**: Collections replace entirely on each update (sync_mode: sync)
+- **Custom Sort**: Collections appear at the top of your library (!Netflix prefix)
+- **Error Handling**: Continues processing even if some titles can't be matched
+- **Automatic Updates**: Files are regenerated on each run with current Top 10 data
+
+### Using with Kometa
+
+1. **Mount the output directory** to your Kometa container
+2. **Configure Kometa** to read from the generated YAML files
+3. **Collections** will be automatically created/updated based on current Netflix Top 10 data
+
+#### Complete Docker Compose Example with Kometa
+
+```yaml
+services:
+  netflix-overseerr-bridge:
+    container_name: netflix-overseerr-bridge
+    image: stephtanner1/netflix-overseerr-bridge:latest
+    environment:
+      - OVERSEERR_URL=${OVERSEERR_URL}
+      - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
+      - KOMETA_ENABLED=true
+      - KOMETA_OUTPUT_DIR=/config/kometa
+      - NETFLIX_COUNTRY="United States"
+    volumes:
+      - ./kometa:/config/kometa
+    restart: unless-stopped
+
+  kometa:
+    container_name: kometa
+    image: kometateam/kometa:latest
+    environment:
+      - KOMETA_CONFIG=/config/config.yml
+    volumes:
+      - ./kometa-config:/config
+      - ./kometa:/config/kometa  # Same mount as bridge
+    restart: unless-stopped
+```
+
+#### Kometa Configuration Example
+
+```yaml
+# In your Kometa config.yml
+libraries:
+  Movies:
+    collection_files:
+      - file: /config/kometa/netflix_movies_united_states.yml
+  TV Shows:
+    collection_files:
+      - file: /config/kometa/netflix_tv_united_states.yml
+```
+
+#### Multi-Country Example
+
+To generate collections for multiple countries, run separate containers:
+
+```yaml
+services:
+  netflix-bridge-us:
+    container_name: netflix-bridge-us
+    image: stephtanner1/netflix-overseerr-bridge:latest
+    environment:
+      - OVERSEERR_URL=${OVERSEERR_URL}
+      - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
+      - KOMETA_ENABLED=true
+      - NETFLIX_COUNTRY="United States"
+    volumes:
+      - ./kometa:/config/kometa
+    restart: unless-stopped
+
+  netflix-bridge-uk:
+    container_name: netflix-bridge-uk
+    image: stephtanner1/netflix-overseerr-bridge:latest
+    environment:
+      - OVERSEERR_URL=${OVERSEERR_URL}
+      - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
+      - KOMETA_ENABLED=true
+      - NETFLIX_COUNTRY="United Kingdom"
+    volumes:
+      - ./kometa:/config/kometa
+    restart: unless-stopped
+```
+
+This generates files for both countries:
+
+- `netflix_movies_united_states.yml`
+- `netflix_tv_united_states.yml`
+- `netflix_movies_united_kingdom.yml`
+- `netflix_tv_united_kingdom.yml`
 
 ## Notes
 
@@ -199,6 +369,7 @@ The bridge has been enhanced with intelligent content matching and error handlin
 - **TMDB Integration**: Better handling of shows not found in TMDB database
 
 ### Expected Success Rates
+
 - **Movies**: ~95-100% success rate (most movies are found and requested successfully)
 - **TV Shows**: ~85-95% success rate (some shows may not be in Overseerr database)
 - **Overall**: ~90-95% success rate across all content types
@@ -228,6 +399,7 @@ The bridge has been enhanced with intelligent content matching and error handlin
 - Ensure your API key has request permissions
 
 ### Performance Notes
+
 - The bridge processes ~20 titles (10 movies + 10 TV shows) per run
 - Each request includes a 1-second delay to be respectful to the API
 - Total processing time is typically 20-30 seconds per run
