@@ -67,120 +67,12 @@ docker run -d \
   -e RUN_FREQUENCY=24 \
   -e NETFLIX_COUNTRY='United States' \
   -e DRY_RUN=false \
+  -e KOMETA_ENABLED=false \
+  -e KOMETA_OUTPUT_DIR=/config/kometa \
+  -v ./kometa:/config/kometa \
   --name netflix-overseerr-bridge \
   stephtanner1/netflix-overseerr-bridge:latest
 ```
-
-## Country Selection
-
-The `NETFLIX_COUNTRY` environment variable allows you to specify which country's Netflix top 10 list to sync. The country name must match exactly as it appears in Netflix's data. When you run the script, it will log the available countries in the Netflix data.
-
-```yaml
-environment:
-  - NETFLIX_COUNTRY="United Kingdom"
-  - NETFLIX_COUNTRY="Japan"
-```
-
-When running manually from the command line, any type of quotes will work:
-
-```bash
-# All of these work:
-python src/scraper.py --country "United Kingdom"
-python src/scraper.py --country 'United Kingdom'
-python src/scraper.py --country United\ Kingdom
-```
-
-Common country values (exact names from Netflix data):
-
-- "United States"
-- "United Kingdom"
-- "Japan"
-- "Germany"
-- "France"
-- "Brazil"
-- "Australia"
-- "South Korea"
-- "India"
-- "Canada"
-
-Note: The country name is case-sensitive and must match exactly as it appears in Netflix's data. If you're unsure of the exact name, run the script once and check the logs for the list of available countries.
-
-## Manual Execution
-
-You can manually trigger the script at any time by executing into the container:
-
-```bash
-# Execute into the container
-docker exec -it netflix-overseerr-bridge /bin/bash
-
-# Run the script with default settings
-python src/scraper.py
-
-# Run in dry run mode
-python src/scraper.py --dry-run
-
-# Run with a specific country
-python src/scraper.py --country "United Kingdom"
-
-# Run with both dry run and country
-python src/scraper.py --dry-run --country "United Kingdom"
-```
-
-This is useful for testing different configurations or manually triggering a sync.
-
-## Run Frequency
-
-By default, the container runs once per day at 2 AM. You can customize the run frequency using the `RUN_FREQUENCY` environment variable:
-
-```bash
-# Run every 12 hours
-docker run -d \
-  -e OVERSEERR_URL="http://your-overseerr-url:5055" \
-  -e OVERSEERR_API_KEY="your-api-key" \
-  -e RUN_FREQUENCY=12 \
-  -e NETFLIX_COUNTRY='United States' \
-  --name netflix-overseerr-bridge \
-  stephtanner1/netflix-overseerr-bridge:latest
-
-# Run weekly (168 hours)
-docker run -d \
-  -e OVERSEERR_URL="http://your-overseerr-url:5055" \
-  -e OVERSEERR_API_KEY="your-api-key" \
-  -e RUN_FREQUENCY=168 \
-  -e NETFLIX_COUNTRY='United States' \
-  --name netflix-overseerr-bridge \
-  stephtanner1/netflix-overseerr-bridge:latest
-```
-
-Common frequency values:
-
-- 24: Daily
-- 168: Weekly
-- 720: Monthly (30 days)
-- 8760: Yearly
-
-## Dry Run Mode
-
-You can run the container in "dry run" mode to see what would be requested without actually making the requests. This is useful for testing and verifying the configuration. To enable dry run mode, add the `--dry-run` flag when running the container:
-
-```bash
-# Using Docker Compose
-docker-compose run --rm netflix-overseerr-bridge --dry-run
-
-# Using Docker directly
-docker run --rm \
-  -e OVERSEERR_URL="http://your-overseerr-url:5055" \
-  -e OVERSEERR_API_KEY="your-api-key" \
-  -e NETFLIX_COUNTRY='United States' \
-  stephtanner1/netflix-overseerr-bridge:latest --dry-run
-```
-
-In dry run mode, the script will:
-
-- Fetch the Netflix top 10 list as normal
-- Search for titles in Overseerr
-- Log what would be requested without making actual requests
-- Show the TMDB IDs that would be used for each request
 
 ## Kometa YAML Generation
 
@@ -255,6 +147,87 @@ collections:
 - **Custom Sort**: Collections appear at the top of your library (!Netflix prefix)
 - **Error Handling**: Continues processing even if some titles can't be matched
 - **Automatic Updates**: Files are regenerated on each run with current Top 10 data
+
+### Configuring Kometa
+
+Once the bridge is generating YAML files, you need to configure your existing Kometa setup to use them. The bridge creates separate files for movies and TV shows that can be integrated into your current Kometa configuration.
+
+#### Step-by-Step Integration
+
+1. **Ensure Volume Mount**: Verify your Kometa container has access to the generated YAML files:
+
+```yaml
+# In your Kometa service
+volumes:
+  - ./kometa-config:/config           # Your existing Kometa config
+  - ./kometa:/config/netflix-yaml     # Netflix YAML files from bridge
+```
+
+2. **Update Kometa Configuration**: Add the generated files to your existing `config.yml`:
+
+```yaml
+# config.yml - Add to existing libraries section
+libraries:
+  Movies:
+    collection_files:
+      - file: /config/existing-collections.yml    # Your existing collections
+      - file: /config/netflix-yaml/netflix_movies_united_states.yml  # Netflix movies
+
+  TV Shows:
+    collection_files:
+      - file: /config/existing-tv-collections.yml # Your existing TV collections
+      - file: /config/netflix-yaml/netflix_tv_united_states.yml      # Netflix TV shows
+```
+
+3. **Multiple Countries**: For multiple country configurations:
+
+```yaml
+libraries:
+  Movies:
+    collection_files:
+      - file: /config/existing-collections.yml
+      - file: /config/netflix-yaml/netflix_movies_united_states.yml
+      - file: /config/netflix-yaml/netflix_movies_united_kingdom.yml
+      - file: /config/netflix-yaml/netflix_movies_japan.yml
+
+  TV Shows:
+    collection_files:
+      - file: /config/existing-collections.yml
+      - file: /config/netflix-yaml/netflix_tv_united_states.yml
+      - file: /config/netflix-yaml/netflix_tv_united_kingdom.yml
+      - file: /config/netflix-yaml/netflix_tv_japan.yml
+```
+
+#### Important Configuration Notes
+
+- **Non-Destructive**: The bridge generates separate YAML files and will never modify your existing Kometa configuration
+- **File Naming**: Files are named based on country (e.g., `netflix_movies_united_states.yml`, `netflix_tv_united_kingdom.yml`)
+- **Path Consistency**: Ensure the paths in your `config.yml` match your volume mount structure
+- **Collection Ordering**: Netflix collections use `!Netflix` prefix to appear at the top of your library
+- **Update Frequency**: Collections automatically update when the bridge runs (based on your `RUN_FREQUENCY`)
+
+#### Alternative Library Setup
+
+If you prefer dedicated Netflix libraries:
+
+```yaml
+libraries:
+  Movies:
+    collection_files:
+      - file: /config/existing-collections.yml
+
+  TV Shows:
+    collection_files:
+      - file: /config/existing-tv-collections.yml
+
+  Netflix Movies:
+    collection_files:
+      - file: /config/netflix-yaml/netflix_movies_united_states.yml
+
+  Netflix TV:
+    collection_files:
+      - file: /config/netflix-yaml/netflix_tv_united_states.yml
+```
 
 ### Using with Kometa
 
@@ -341,6 +314,120 @@ This generates files for both countries:
 - `netflix_movies_united_kingdom.yml`
 - `netflix_tv_united_kingdom.yml`
 
+## Country Selection
+
+The `NETFLIX_COUNTRY` environment variable allows you to specify which country's Netflix top 10 list to sync. The country name must match exactly as it appears in Netflix's data. When you run the script, it will log the available countries in the Netflix data.
+
+```yaml
+environment:
+  - NETFLIX_COUNTRY="United Kingdom"
+  - NETFLIX_COUNTRY="Japan"
+```
+
+When running manually from the command line, any type of quotes will work:
+
+```bash
+# All of these work:
+python src/scraper.py --country "United Kingdom"
+python src/scraper.py --country 'United Kingdom'
+python src/scraper.py --country United\ Kingdom
+```
+
+Common country values (exact names from Netflix data):
+
+- "United States"
+- "United Kingdom"
+- "Japan"
+- "Germany"
+- "France"
+- "Brazil"
+- "Australia"
+- "South Korea"
+- "India"
+- "Canada"
+
+Note: The country name is case-sensitive and must match exactly as it appears in Netflix's data. If you're unsure of the exact name, run the script once and check the logs for the list of available countries.
+
+## Manual Execution
+
+You can manually trigger the script at any time by executing into the container:
+
+```bash
+# Execute into the container
+docker exec -it netflix-overseerr-bridge /bin/bash
+
+# Run the script with default settings
+python src/scraper.py
+
+# Run in dry run mode
+python src/scraper.py --dry-run
+
+# Run with a specific country
+python src/scraper.py --country "United Kingdom"
+
+# Run with both dry run and country
+python src/scraper.py --dry-run --country "United Kingdom"
+```
+
+This is useful for testing different configurations or manually triggering a sync.
+
+## Run Frequency
+
+By default, the container runs once per day at 2 AM. You can customize the run frequency using the `RUN_FREQUENCY` environment variable:
+
+```bash
+# Run every 12 hours
+docker run -d \
+  -e OVERSEERR_URL="http://your-overseerr-url:5055" \
+  -e OVERSEERR_API_KEY="your-api-key" \
+  -e RUN_FREQUENCY=12 \
+  -e NETFLIX_COUNTRY='United States' \
+  -e KOMETA_ENABLED=false \
+  --name netflix-overseerr-bridge \
+  stephtanner1/netflix-overseerr-bridge:latest
+
+# Run weekly (168 hours)
+docker run -d \
+  -e OVERSEERR_URL="http://your-overseerr-url:5055" \
+  -e OVERSEERR_API_KEY="your-api-key" \
+  -e RUN_FREQUENCY=168 \
+  -e NETFLIX_COUNTRY='United States' \
+  -e KOMETA_ENABLED=false \
+  --name netflix-overseerr-bridge \
+  stephtanner1/netflix-overseerr-bridge:latest
+```
+
+Common frequency values:
+
+- 24: Daily
+- 168: Weekly
+- 720: Monthly (30 days)
+- 8760: Yearly
+
+## Dry Run Mode
+
+You can run the container in "dry run" mode to see what would be requested without actually making the requests. This is useful for testing and verifying the configuration. To enable dry run mode, add the `--dry-run` flag when running the container:
+
+```bash
+# Using Docker Compose
+docker-compose run --rm netflix-overseerr-bridge --dry-run
+
+# Using Docker directly
+docker run --rm \
+  -e OVERSEERR_URL="http://your-overseerr-url:5055" \
+  -e OVERSEERR_API_KEY="your-api-key" \
+  -e NETFLIX_COUNTRY='United States' \
+  -e KOMETA_ENABLED=false \
+  stephtanner1/netflix-overseerr-bridge:latest --dry-run
+```
+
+In dry run mode, the script will:
+
+- Fetch the Netflix top 10 list as normal
+- Search for titles in Overseerr
+- Log what would be requested without making actual requests
+- Show the TMDB IDs that would be used for each request
+
 ## Notes
 
 - The container will fetch Netflix's top 10 content and attempt to request each item in Overseerr
@@ -354,16 +441,19 @@ This generates files for both countries:
 The bridge has been enhanced with intelligent content matching and error handling:
 
 ### Smart Title Matching
+
 - **Exact Title Matching**: Prioritizes exact title matches with correct media type (movie vs TV)
 - **Fallback Logic**: If exact matches aren't found, falls back to most recent releases
 - **Media Type Detection**: Automatically distinguishes between movies and TV shows
 
 ### Intelligent Season Selection for TV Shows
+
 - **Progressive Season Requests**: Tries season 1 first, then season 2, then season 3
 - **Already Requested Detection**: Properly identifies when seasons are already requested or downloading
 - **Smart Fallbacks**: Handles cases where earlier seasons are unavailable
 
 ### Enhanced Error Handling
+
 - **500 Error Elimination**: Fixed connection issues with TV show requests
 - **Proper Error Categorization**: Distinguishes between "not found" vs "error" status
 - **TMDB Integration**: Better handling of shows not found in TMDB database
@@ -378,22 +468,26 @@ The bridge has been enhanced with intelligent content matching and error handlin
 
 ### Common Issues and Solutions
 
-**"TV show not found in Overseerr database"**
+#### "TV show not found in Overseerr database"
+
 - This is normal for shows that haven't been imported into your Overseerr instance
 - The show exists in TMDB but not in your local Overseerr database
 - No action needed - this is expected behavior
 
-**"Season 1 already available or requested"**
+#### "Season 1 already available or requested"
+
 - The show is already being downloaded or is available in your media library
 - The bridge correctly identifies this and skips the request
 - This is working as designed
 
-**"No seasons available to request"**
+#### "No seasons available to request"
+
 - All seasons of the show are already requested or available
 - The bridge will try the next available season automatically
 - No action needed
 
-**High error count in summary**
+#### High error count in summary
+
 - Check that your `OVERSEERR_URL` and `OVERSEERR_API_KEY` are correct
 - Verify your Overseerr instance is running and accessible
 - Ensure your API key has request permissions
