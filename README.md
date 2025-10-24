@@ -18,7 +18,9 @@ The container requires the following environment variables:
 - `NETFLIX_COUNTRY`: (Optional) The country's Netflix top 10 list to sync (e.g., "United States", "United Kingdom", "Japan"). Defaults to "United States"
 - `DRY_RUN`: (Optional) Set to "true", "1", or "yes" to enable dry run mode. Defaults to false.
 - `KOMETA_ENABLED`: (Optional) Set to "true", "1", or "yes" to enable Kometa YAML file generation. Defaults to false.
-- `KOMETA_OUTPUT_DIR`: (Optional) Directory where Kometa YAML files will be saved. Defaults to "/config/kometa"
+- `KOMETA_OUTPUT_DIR`: (Optional) Base directory where Kometa YAML files will be saved. Defaults to "/config/kometa"
+- `KOMETA_MOVIES_DIR`: (Optional) Specific directory for movie collection files. Defaults to KOMETA_OUTPUT_DIR
+- `KOMETA_TV_DIR`: (Optional) Specific directory for TV collection files. Defaults to KOMETA_OUTPUT_DIR
 
 ## Quick Start with Docker Compose
 
@@ -99,7 +101,9 @@ services:
       - OVERSEERR_URL=${OVERSEERR_URL}
       - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
       - KOMETA_ENABLED=true                    # Enable Kometa YAML generation
-      - KOMETA_OUTPUT_DIR=/config/kometa       # Output directory (default)
+      - KOMETA_OUTPUT_DIR=/config/kometa       # Base directory (default)
+      - KOMETA_MOVIES_DIR=/config/kometa/movies # Movie collections directory
+      - KOMETA_TV_DIR=/config/kometa/tv        # TV collections directory
       - NETFLIX_COUNTRY="United States"        # Country for collections
     volumes:
       - ./kometa:/config/kometa                # Mount directory for YAML files

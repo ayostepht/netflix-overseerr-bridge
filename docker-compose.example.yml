@@ -1,0 +1,17 @@
+services:
+  netflix-overseerr-bridge:
+    container_name: netflix-overseerr-bridge
+    image: stephtanner1/netflix-overseerr-bridge:latest
+    environment:
+      - OVERSEERR_URL=${OVERSEERR_URL}
+      - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
+      - RUN_FREQUENCY=24  # Optional: Set run frequency in hours (e.g., 24 for daily)
+      - NETFLIX_COUNTRY='United States'  # Optional: Set country for Netflix top 10 list
+      - DRY_RUN=false  # Optional: Enable dry run mode, defaults to false
+      - KOMETA_ENABLED=true  # Optional: Enable Kometa YAML file generation
+      - KOMETA_OUTPUT_DIR=/config/kometa  # Optional: Base directory for Kometa YAML files
+      - KOMETA_MOVIES_DIR=/config/kometa/movies  # Optional: Specific directory for movie collections
+      - KOMETA_TV_DIR=/config/kometa/tv  # Optional: Specific directory for TV collections
+    volumes:
+       - /mnt/user/appdata/Kometa/config:/config/kometa
+    restart: unless-stopped

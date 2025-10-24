@@ -34,6 +34,8 @@ class NetflixOverseerrBridge:
         # Kometa configuration
         self.kometa_enabled = os.getenv('KOMETA_ENABLED', 'false').lower() in ('true', '1', 'yes')
         self.kometa_output_dir = os.getenv('KOMETA_OUTPUT_DIR', '/config/kometa')
+        self.kometa_movies_dir = os.getenv('KOMETA_MOVIES_DIR', self.kometa_output_dir)
+        self.kometa_tv_dir = os.getenv('KOMETA_TV_DIR', self.kometa_output_dir)
 
         # Log environment variables for debugging
         logger.info(f"Environment variables:")
@@ -43,6 +45,8 @@ class NetflixOverseerrBridge:
         logger.info(f"KOMETA_ENABLED: {self.kometa_enabled}")
         if self.kometa_enabled:
             logger.info(f"KOMETA_OUTPUT_DIR: {self.kometa_output_dir}")
+            logger.info(f"KOMETA_MOVIES_DIR: {self.kometa_movies_dir}")
+            logger.info(f"KOMETA_TV_DIR: {self.kometa_tv_dir}")
         
         if not self.overseerr_url or not self.overseerr_api_key:
             logger.error("Missing required environment variables!")
@@ -163,10 +167,10 @@ class NetflixOverseerrBridge:
 
     def get_existing_tv_requests(self, media_id):
         """Get existing TV show requests and their seasons from Overseerr.
-        
+
         Args:
             media_id (int): The TMDB media ID
-            
+
         Returns:
             list: List of season numbers that are already requested or available
         """
@@ -175,11 +179,11 @@ class NetflixOverseerrBridge:
                 'X-Api-Key': self.overseerr_api_key,
                 'Accept': 'application/json'
             }
-            
+
             # Try to get requests for this specific media ID
             requests_url = f"{self.overseerr_url}/api/v1/request"
             requests_response = self.session.get(requests_url, headers=headers)
-            
+
             if requests_response.status_code == 200:
                 requests_data = requests_response.json()
                 logger.info(f"Got requests data, checking for media ID {media_id}")
@@ -187,15 +191,18 @@ class NetflixOverseerrBridge:
                 if existing_seasons:
                     logger.info(f"Found existing seasons from requests API: {existing_seasons}")
                     return existing_seasons
-            
+
             # Fallback: try the media endpoint which has request status info
             media_url = f"{self.overseerr_url}/api/v1/media/{media_id}"
             response = self.session.get(media_url, headers=headers)
-            
+
             if response.status_code == 200:
                 media_details = response.json()
                 logger.info(f"Got media details via /api/v1/media/{media_id}")
                 return self._extract_seasons_from_media(media_details)
+            elif response.status_code == 404:
+                logger.info(f"Media ID {media_id} not found in Overseerr database - this is a new media item")
+                return []
             else:
                 logger.info(f"Could not get media details for media ID {media_id}: {response.status_code}")
                 # Fall back to TV endpoint
@@ -206,7 +213,7 @@ class NetflixOverseerrBridge:
                     logger.info(f"Got TV details via /api/v1/tv/{media_id}")
                     logger.info(f"TV show API response keys: {list(tv_details.keys())}")
                     existing_seasons = []
-                    
+
                     # Check if there are any seasons in the response
                     if 'seasons' in tv_details:
                         logger.info(f"Found {len(tv_details['seasons'])} seasons in TV details")
@@ -223,11 +230,14 @@ class NetflixOverseerrBridge:
                                 is_available = season.get('available', False)
                                 if status in [2, 3, 5] or is_available:
                                     existing_seasons.append(season_number)
-                    
+
                     logger.info(f"Found existing seasons for media ID {media_id}: {existing_seasons}")
                     return sorted(existing_seasons)
+                elif tv_response.status_code == 404:
+                    logger.info(f"TV show ID {media_id} not found in Overseerr database - this is a new media item")
+                    return []
                 return []
-            
+
         except Exception as e:
             logger.info(f"Error checking existing requests for media ID {media_id}: {str(e)}")
             return []
@@ -360,13 +370,13 @@ class NetflixOverseerrBridge:
             # Find exact title match or use first result
             exact_matches = [r for r in tv_results if r.get('name', '').lower() == title.lower()]
             if exact_matches:
-                exact_matches.sort(key=lambda x: x.get('firstAirDate', ''), reverse=True)
+                # Use first exact match (likely ordered by relevance/popularity)
                 media_item = exact_matches[0]
-                logger.info(f"Found exact match for {title} from {media_item.get('firstAirDate', '')}")
+                logger.info(f"Found exact match for {title} (ID: {media_item.get('id')}) from {media_item.get('firstAirDate', '')}")
             else:
                 tv_results.sort(key=lambda x: x.get('firstAirDate', ''), reverse=True)
                 media_item = tv_results[0]
-                logger.info(f"Using best match for {title} from {media_item.get('firstAirDate', '')}")
+                logger.info(f"Using best match for {title} (ID: {media_item.get('id')}) from {media_item.get('firstAirDate', '')}")
             
             media_id = media_item['id']
             
@@ -418,6 +428,11 @@ class NetflixOverseerrBridge:
                 return {'status': 'existing_request', 'message': f'Request already exists (existing: {existing_seasons})', 'tmdb_id': media_id}
             else:
                 error_msg = request_response.json().get('message', 'Unknown error')
+
+                # Check for Overseerr API bug first
+                if "Cannot read properties of undefined (reading 'filter')" in error_msg:
+                    logger.warning(f"Overseerr API bug detected for {title} (works in web UI but fails via API)")
+                    return {'status': 'error', 'message': f'Overseerr API bug - try requesting via web UI'}
                 
                 # If requesting multiple seasons fails, try one by one
                 if 'No seasons available to request' in error_msg:
@@ -452,6 +467,37 @@ class NetflixOverseerrBridge:
                     else:
                         # All seasons were already available - this is the correct behavior
                         return {'status': 'existing_request', 'message': f'All seasons already available or requested', 'tmdb_id': media_id}
+                elif 'Could not find any entity of type "Media"' in error_msg:
+                    # This happens when media ID exists in TMDB search but not in Overseerr's database yet
+                    # Try a simple request without season checking to let Overseerr import the media
+                    logger.info(f"Media {media_id} not found in Overseerr database for {title}, trying simple request to import media...")
+                    simple_request_data = {
+                        'mediaId': media_id,
+                        'mediaType': 'tv',
+                        'is4k': False
+                    }
+
+                    simple_response = self.session.post(
+                        request_url,
+                        json=simple_request_data,
+                        headers=search_headers
+                    )
+
+                    if simple_response.status_code == 201:
+                        logger.info(f"Successfully requested {title} via simple request (media imported)")
+                        return {'status': 'new_request', 'message': f'Successfully requested (media imported)', 'tmdb_id': media_id}
+                    elif simple_response.status_code == 409:
+                        logger.info(f"Request for {title} already exists")
+                        return {'status': 'existing_request', 'message': f'Request already exists', 'tmdb_id': media_id}
+                    else:
+                        simple_error = simple_response.json().get('message', 'Unknown error')
+                        logger.warning(f"Simple request also failed for {title}: {simple_response.status_code} - {simple_error}")
+                        return {'status': 'error', 'message': f'Request failed: {simple_error}'}
+                elif "Cannot read properties of undefined (reading 'filter')" in error_msg:
+                    # Known Overseerr bug in version 1.34.0 affecting TV show requests via API
+                    # The web UI works but API calls fail with this JavaScript error
+                    logger.warning(f"Overseerr API bug detected for {title} (works in web UI but fails via API)")
+                    return {'status': 'error', 'message': f'Overseerr API bug - try requesting via web UI'}
                 else:
                     logger.warning(f"Failed to request {title}: {request_response.status_code} - {error_msg}")
                     return {'status': 'error', 'message': f'Request failed: {error_msg}'}
@@ -491,10 +537,9 @@ class NetflixOverseerrBridge:
                     # First, try to find exact title matches with correct media type
                     exact_matches = [r for r in results if r.get('title', r.get('name', '')).lower() == title.lower() and r.get('mediaType') == media_type]
                     if exact_matches:
-                        # Use exact match with most recent date
-                        exact_matches.sort(key=lambda x: x.get('releaseDate', '') or x.get('firstAirDate', ''), reverse=True)
+                        # Use first exact match (likely ordered by relevance/popularity)
                         results = exact_matches
-                        logger.info(f"Found {len(results)} exact title matches for {title}, using most recent release from {results[0].get('releaseDate', '') or results[0].get('firstAirDate', '')}")
+                        logger.info(f"Found {len(results)} exact title matches for {title}, using first result (ID: {results[0].get('id')}) from {results[0].get('releaseDate', '') or results[0].get('firstAirDate', '')}")
                     else:
                         # Fall back to sorting by release date (most recent first)
                         results.sort(key=lambda x: x.get('releaseDate', '') or x.get('firstAirDate', ''), reverse=True)
@@ -586,8 +631,34 @@ class NetflixOverseerrBridge:
                         logger.warning(f"TV show {title} not found in TMDB")
                         return {'status': 'not_found', 'message': 'TV show not found in TMDB'}
                     elif 'Could not find any entity of type "Media"' in error_msg:
-                        logger.warning(f"Media {title} not found in Overseerr database")
-                        return {'status': 'not_found', 'message': 'Media not found in Overseerr database'}
+                        # Try a simple request to import the media into Overseerr's database
+                        logger.info(f"Media {media_id} not found in Overseerr database for {title}, trying simple request to import media...")
+                        simple_request_data = {
+                            'mediaId': media_id,
+                            'mediaType': media_type,
+                            'is4k': False
+                        }
+
+                        simple_response = self.session.post(
+                            request_url,
+                            json=simple_request_data,
+                            headers=search_headers
+                        )
+
+                        if simple_response.status_code == 201:
+                            logger.info(f"Successfully requested {title} via simple request (media imported)")
+                            return {'status': 'new_request', 'message': 'Successfully requested (media imported)', 'tmdb_id': media_id}
+                        elif simple_response.status_code == 409:
+                            logger.info(f"Request for {title} already exists")
+                            return {'status': 'existing_request', 'message': 'Request already exists', 'tmdb_id': media_id}
+                        else:
+                            simple_error = simple_response.json().get('message', 'Unknown error')
+                            if "Cannot read properties of undefined (reading 'filter')" in simple_error:
+                                logger.warning(f"Overseerr API bug detected for {title} (works in web UI but fails via API)")
+                                return {'status': 'error', 'message': f'Overseerr API bug - try requesting via web UI'}
+                            else:
+                                logger.warning(f"Simple request also failed for {title}: {simple_response.status_code} - {simple_error}")
+                                return {'status': 'error', 'message': f'Media not found in Overseerr database'}
                     elif 'Cannot read properties of undefined' in error_msg:
                         logger.warning(f"TV show {title} not found in Overseerr database")
                         return {'status': 'not_found', 'message': 'TV show not found in Overseerr database'}
@@ -632,8 +703,30 @@ class NetflixOverseerrBridge:
             return
 
         try:
-            # Create output directory if it doesn't exist
-            os.makedirs(self.kometa_output_dir, exist_ok=True)
+            # Create output directories if they don't exist
+            os.makedirs(self.kometa_movies_dir, exist_ok=True)
+            os.makedirs(self.kometa_tv_dir, exist_ok=True)
+
+            # Test write permissions
+            try:
+                test_movie_file = os.path.join(self.kometa_movies_dir, '.write_test')
+                with open(test_movie_file, 'w') as f:
+                    f.write('test')
+                os.remove(test_movie_file)
+                logger.info(f"Movie directory is writable: {self.kometa_movies_dir}")
+            except Exception as e:
+                logger.error(f"Movie directory is not writable: {self.kometa_movies_dir} - {e}")
+                return
+
+            try:
+                test_tv_file = os.path.join(self.kometa_tv_dir, '.write_test')
+                with open(test_tv_file, 'w') as f:
+                    f.write('test')
+                os.remove(test_tv_file)
+                logger.info(f"TV directory is writable: {self.kometa_tv_dir}")
+            except Exception as e:
+                logger.error(f"TV directory is not writable: {self.kometa_tv_dir} - {e}")
+                return
 
             # Sanitize country name for filename
             country_safe = self._sanitize_filename(self.country)
@@ -674,7 +767,7 @@ class NetflixOverseerrBridge:
             # Generate movie YAML file
             if movie_tmdb_ids:
                 movie_filename = f"netflix_movies_{country_safe}.yml"
-                movie_filepath = os.path.join(self.kometa_output_dir, movie_filename)
+                movie_filepath = os.path.join(self.kometa_movies_dir, movie_filename)
                 movie_yaml = self._create_kometa_yaml(
                     collection_name=f"Netflix Top 10 Movies - {self.country}",
                     tmdb_ids=movie_tmdb_ids,
@@ -685,14 +778,20 @@ class NetflixOverseerrBridge:
                 with open(movie_filepath, 'w', encoding='utf-8') as f:
                     yaml.dump(movie_yaml, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
-                logger.info(f"Generated Kometa movie file: {movie_filepath} with {len(movie_tmdb_ids)} movies")
+                # Verify file was actually created and has content
+                if os.path.exists(movie_filepath):
+                    file_size = os.path.getsize(movie_filepath)
+                    logger.info(f"✓ Generated Kometa movie file: {movie_filepath} with {len(movie_tmdb_ids)} movies ({file_size} bytes)")
+                else:
+                    logger.error(f"✗ Failed to create movie file: {movie_filepath}")
+                    return
             else:
                 logger.warning("No movie TMDb IDs found, skipping movie YAML generation")
 
             # Generate TV show YAML file
             if tv_tmdb_ids:
                 tv_filename = f"netflix_tv_{country_safe}.yml"
-                tv_filepath = os.path.join(self.kometa_output_dir, tv_filename)
+                tv_filepath = os.path.join(self.kometa_tv_dir, tv_filename)
                 tv_yaml = self._create_kometa_yaml(
                     collection_name=f"Netflix Top 10 TV Shows - {self.country}",
                     tmdb_ids=tv_tmdb_ids,
@@ -703,14 +802,23 @@ class NetflixOverseerrBridge:
                 with open(tv_filepath, 'w', encoding='utf-8') as f:
                     yaml.dump(tv_yaml, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
-                logger.info(f"Generated Kometa TV file: {tv_filepath} with {len(tv_tmdb_ids)} shows")
+                # Verify file was actually created and has content
+                if os.path.exists(tv_filepath):
+                    file_size = os.path.getsize(tv_filepath)
+                    logger.info(f"✓ Generated Kometa TV file: {tv_filepath} with {len(tv_tmdb_ids)} shows ({file_size} bytes)")
+                else:
+                    logger.error(f"✗ Failed to create TV file: {tv_filepath}")
+                    return
             else:
                 logger.warning("No TV show TMDb IDs found, skipping TV YAML generation")
 
             # Log summary
             total_generated = (1 if movie_tmdb_ids else 0) + (1 if tv_tmdb_ids else 0)
             if total_generated > 0:
-                logger.info(f"Successfully generated {total_generated} Kometa YAML file(s) in {self.kometa_output_dir}")
+                movies_msg = f"Movies: {self.kometa_movies_dir}" if movie_tmdb_ids else ""
+                tv_msg = f"TV: {self.kometa_tv_dir}" if tv_tmdb_ids else ""
+                dirs_msg = ", ".join(filter(None, [movies_msg, tv_msg]))
+                logger.info(f"✅ Successfully generated {total_generated} Kometa YAML file(s) - {dirs_msg}")
             else:
                 logger.warning("No Kometa YAML files were generated due to missing TMDb IDs")
 
@@ -758,7 +866,7 @@ class NetflixOverseerrBridge:
                 # Find exact title match or use first result
                 exact_matches = [r for r in results if r.get('title', r.get('name', '')).lower() == title.lower()]
                 if exact_matches:
-                    exact_matches.sort(key=lambda x: x.get('releaseDate', '') or x.get('firstAirDate', ''), reverse=True)
+                    # Use first exact match (likely ordered by relevance/popularity)
                     media_item = exact_matches[0]
                 else:
                     results.sort(key=lambda x: x.get('releaseDate', '') or x.get('firstAirDate', ''), reverse=True)
