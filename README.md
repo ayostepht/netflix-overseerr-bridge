@@ -38,7 +38,9 @@ services:
       - NETFLIX_COUNTRY='United States'  # Optional: Set country for Netflix top 10 list
       - DRY_RUN=false  # Optional: Enable dry run mode, defaults to false
       - KOMETA_ENABLED=false  # Optional: Enable Kometa YAML file generation
-      - KOMETA_OUTPUT_DIR=/config/kometa  # Optional: Directory for Kometa YAML files
+      - KOMETA_OUTPUT_DIR=/config/kometa  # Optional: Base directory for Kometa YAML files
+      - KOMETA_MOVIES_DIR=/config/kometa/movies  # Optional: Movie collections directory
+      - KOMETA_TV_DIR=/config/kometa/tv  # Optional: TV collections directory
     volumes:
       - ./kometa:/config/kometa  # Optional: Mount directory for Kometa YAML files
     restart: unless-stopped
@@ -71,6 +73,8 @@ docker run -d \
   -e DRY_RUN=false \
   -e KOMETA_ENABLED=false \
   -e KOMETA_OUTPUT_DIR=/config/kometa \
+  -e KOMETA_MOVIES_DIR=/config/kometa/movies \
+  -e KOMETA_TV_DIR=/config/kometa/tv \
   -v ./kometa:/config/kometa \
   --name netflix-overseerr-bridge \
   stephtanner1/netflix-overseerr-bridge:latest
@@ -251,6 +255,8 @@ services:
       - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
       - KOMETA_ENABLED=true
       - KOMETA_OUTPUT_DIR=/config/kometa
+      - KOMETA_MOVIES_DIR=/config/kometa/movies
+      - KOMETA_TV_DIR=/config/kometa/tv
       - NETFLIX_COUNTRY="United States"
     volumes:
       - ./kometa:/config/kometa
