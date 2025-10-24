@@ -946,7 +946,7 @@ class NetflixOverseerrBridge:
                 if 'externalIds' in media_details:
                     external_ids = media_details['externalIds']
                     logger.info(f"External IDs for TMDb ID {tmdb_id}: {external_ids}")
-                    tvdb_id = external_ids.get('tvdb_id')
+                    tvdb_id = external_ids.get('tvdbId')  # Fixed: use camelCase 'tvdbId' instead of 'tvdb_id'
                     if tvdb_id:
                         logger.info(f"Found TVDb ID {tvdb_id} for TMDb ID {tmdb_id}")
                         return tvdb_id
